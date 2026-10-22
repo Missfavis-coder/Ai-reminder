@@ -1,0 +1,1 @@
+ALTER TABLE "workspace_sessions" ADD COLUMN "last_event_occurred_at" timestamp with time zone;
