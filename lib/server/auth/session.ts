@@ -46,20 +46,49 @@ export async function getCurrentUserId(): Promise<string | null> {
   const tokenHash = hashToken(token);
   const now = new Date();
 
-  const [session] = await db
-    .select({ userId: authSessions.userId })
-    .from(authSessions)
-    .innerJoin(users, eq(authSessions.userId, users.id))
-    .where(
-      and(
-        eq(authSessions.tokenHash, tokenHash),
-        gt(authSessions.expiresAt, now),
-        isNull(authSessions.revokedAt),
-      ),
-    )
-    .limit(1);
+  try {
+    const [session] = await db
+      .select({ userId: authSessions.userId })
+      .from(authSessions)
+      .innerJoin(users, eq(authSessions.userId, users.id))
+      .where(
+        and(
+          eq(authSessions.tokenHash, tokenHash),
+          gt(authSessions.expiresAt, now),
+          isNull(authSessions.revokedAt),
+        ),
+      )
+      .limit(1);
 
-  return session?.userId ?? null;
+    return session?.userId ?? null;
+    } catch (error) {
+    const cause =
+      error instanceof Error ? error.cause : undefined;
+
+    console.error("Authentication session lookup failed.", {
+      message: error instanceof Error ? error.message : String(error),
+      cause:
+        cause instanceof AggregateError
+          ? cause.errors.map((item) => ({
+              name: item instanceof Error ? item.name : "UnknownError",
+              message: item instanceof Error ? item.message : String(item),
+              code:
+                typeof item === "object" &&
+                item !== null &&
+                "code" in item
+                  ? item.code
+                  : undefined,
+            }))
+          : cause instanceof Error
+            ? {
+                name: cause.name,
+                message: cause.message,
+              }
+            : cause,
+    });
+
+    throw error;
+  }
 }
 
 export async function destroySession() {
