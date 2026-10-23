@@ -1,4 +1,3 @@
-
 import "server-only";
 
 import {
@@ -46,7 +45,7 @@ export async function reconcileStaleNotificationJobs() {
     const [updated] = await db
       .update(notificationJobs)
       .set({
-        status: "failed",
+        status: "review",
         lastError:
           "Processing timed out; delivery outcome requires review.",
         processingStartedAt: null,
@@ -65,7 +64,6 @@ export async function reconcileStaleNotificationJobs() {
       });
 
     if (!updated) {
-      // Another worker or reconciler changed the job first.
       skipped++;
       continue;
     }

@@ -63,7 +63,7 @@ import {
   
   export const notificationJobStatusEnum = pgEnum(
     "notification_job_status",
-    ["pending", "processing", "sent", "failed", "cancelled"],
+    ["pending", "processing", "sent", "failed", "cancelled", "review"],
   );
   
   export const deliveryStatusEnum = pgEnum("delivery_status", [
@@ -71,6 +71,7 @@ import {
     "sent",
     "delivered",
     "failed",
+    "unknown",
   ]);
   
   export const users = pgTable("users", {
@@ -364,6 +365,38 @@ updatedAt: timestamp("updated_at", {
     },
     (table) => [
       index("notification_deliveries_job_idx").on(table.jobId),
+    ],
+  );
+
+  export const whatsappWebhookEvents = pgTable(
+    "whatsapp_webhook_events",
+    {
+      id: uuid("id").defaultRandom().primaryKey(),
+      eventKey: text("event_key").notNull().unique(),
+      providerMessageId: text("provider_message_id"),
+      providerStatus: varchar("provider_status", { length: 30 }).notNull(),
+      payload: jsonb("payload").notNull(),
+      status: varchar("status", { length: 20 }).notNull().default("pending"),
+      attempts: integer("attempts").notNull().default(0),
+      processingStartedAt: timestamp("processing_started_at", {
+        withTimezone: true,
+      }),
+      nextAttemptAt: timestamp("next_attempt_at", { withTimezone: true }),
+      lastError: text("last_error"),
+      receivedAt: timestamp("received_at", { withTimezone: true })
+        .notNull()
+        .defaultNow(),
+      processedAt: timestamp("processed_at", { withTimezone: true }),
+    },
+    (table) => [
+      index("whatsapp_webhook_events_pending_idx").on(
+        table.status,
+        table.nextAttemptAt,
+        table.receivedAt,
+      ),
+      index("whatsapp_webhook_events_message_idx").on(
+        table.providerMessageId,
+      ),
     ],
   );
   

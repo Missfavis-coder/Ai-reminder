@@ -1,0 +1,1 @@
+ALTER TYPE "public"."notification_job_status" ADD VALUE 'review';

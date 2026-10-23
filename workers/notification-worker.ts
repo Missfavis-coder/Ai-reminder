@@ -1,4 +1,3 @@
-
 import "server-only";
 
 import {
@@ -97,9 +96,9 @@ export async function processDueNotificationJobs() {
       continue;
     }
 
-    const message = getMessage(job.payload);
-
     try {
+      const message = getMessage(job.payload);
+
       if (!message) {
         throw new Error(
           "Notification job has no valid message.",
@@ -124,10 +123,10 @@ export async function processDueNotificationJobs() {
           .limit(1);
 
         if (!channel) {
-          await db
+          const [updated] = await db
             .update(notificationJobs)
             .set({
-              status: "pending",
+              status: "failed",
               processingStartedAt: null,
               lastError:
                 "No eligible notification channel is configured.",
@@ -138,15 +137,23 @@ export async function processDueNotificationJobs() {
                 eq(notificationJobs.id, job.id),
                 eq(notificationJobs.status, "processing"),
               ),
-            );
+            )
+            .returning({
+              id: notificationJobs.id,
+            });
 
-          skipped++;
+          if (updated) {
+            failed++;
+          } else {
+            skipped++;
+          }
+
           continue;
         }
 
         channelId = channel.id;
 
-        await db
+        const [updated] = await db
           .update(notificationJobs)
           .set({
             channelId,
@@ -157,7 +164,15 @@ export async function processDueNotificationJobs() {
               eq(notificationJobs.id, job.id),
               eq(notificationJobs.status, "processing"),
             ),
-          );
+          )
+          .returning({
+            id: notificationJobs.id,
+          });
+
+        if (!updated) {
+          skipped++;
+          continue;
+        }
       }
 
       await dispatchNotification({
@@ -175,7 +190,7 @@ export async function processDueNotificationJobs() {
           : "Unknown delivery error";
 
       try {
-        await db
+        const [updated] = await db
           .update(notificationJobs)
           .set({
             status: "failed",
@@ -188,9 +203,29 @@ export async function processDueNotificationJobs() {
               eq(notificationJobs.id, job.id),
               eq(notificationJobs.status, "processing"),
             ),
-          );
+          )
+          .returning({
+            id: notificationJobs.id,
+          });
 
-        failed++;
+        if (updated) {
+          failed++;
+        } else {
+          // The dispatcher or another process may have changed the status.
+          const [currentJob] = await db
+            .select({
+              status: notificationJobs.status,
+            })
+            .from(notificationJobs)
+            .where(eq(notificationJobs.id, job.id))
+            .limit(1);
+
+          if (currentJob?.status === "review") {
+            skipped++;
+          } else {
+            skipped++;
+          }
+        }
       } catch {
         console.error(
           "Could not update failed notification job status.",
