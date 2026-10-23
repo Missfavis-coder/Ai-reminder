@@ -1,4 +1,3 @@
-
 import "server-only";
 
 import { and, eq } from "drizzle-orm";
@@ -94,73 +93,120 @@ export async function dispatchNotification(
     throw new Error("Could not create notification delivery record.");
   }
 
+  let result: Awaited<ReturnType<typeof provider.send>>;
+
   try {
-    const result = await provider.send({
+    result = await provider.send({
       destination: channel.destination,
       message: input.message,
       idempotencyKey: job.idempotencyKey,
     });
-
-    const completedAt = new Date();
-
-    await db
-      .update(notificationDeliveries)
-      .set({
-        status: "sent",
-        providerMessageId: result.providerMessageId,
-      })
-      .where(eq(notificationDeliveries.id, delivery.id));
-
-    await db
-      .update(notificationJobs)
-      .set({
-        status: "sent",
-        processingStartedAt: null,
-        lastError: null,
-        updatedAt: completedAt,
-      })
-      .where(
-        and(
-          eq(notificationJobs.id, job.id),
-          eq(notificationJobs.status, "processing"),
-        ),
-      );
-
-    return {
-      success: true as const,
-      jobId: job.id,
-      deliveryId: delivery.id,
-      providerMessageId: result.providerMessageId,
-    };
   } catch (error) {
     const errorMessage =
       error instanceof Error
         ? error.message.slice(0, 500)
-        : "Unknown delivery error";
+        : "Unknown provider delivery error";
 
-    await db
-      .update(notificationDeliveries)
-      .set({
-        status: "failed",
-        errorMessage,
-      })
-      .where(eq(notificationDeliveries.id, delivery.id));
-
-    await db
-      .update(notificationJobs)
-      .set({
-        status: "failed",
-        processingStartedAt: null,
-        lastError: errorMessage.slice(0, 200),
-        updatedAt: new Date(),
-      })
-      .where(
-        and(
-          eq(notificationJobs.id, job.id),
-          eq(notificationJobs.status, "processing"),
-        ),
+    try {
+      await db
+        .update(notificationDeliveries)
+        .set({
+          status: "unknown",
+          errorMessage,
+        })
+        .where(eq(notificationDeliveries.id, delivery.id));
+    } catch (persistenceError) {
+      console.error(
+        "Could not persist uncertain delivery outcome.",
+        {
+          jobId: job.id,
+          deliveryId: delivery.id,
+          error:
+            persistenceError instanceof Error
+              ? persistenceError.message
+              : "Unknown persistence error",
+        },
       );
+    }
+
+    try {
+      await db
+        .update(notificationJobs)
+        .set({
+          status: "review",
+          processingStartedAt: null,
+          lastError: `Delivery outcome uncertain: ${errorMessage}`.slice(
+            0,
+            200,
+          ),
+          updatedAt: new Date(),
+        })
+        .where(
+          and(
+            eq(notificationJobs.id, job.id),
+            eq(notificationJobs.status, "processing"),
+          ),
+        );
+    } catch (persistenceError) {
+      console.error(
+        "Could not mark notification job for review.",
+        {
+          jobId: job.id,
+          error:
+            persistenceError instanceof Error
+              ? persistenceError.message
+              : "Unknown persistence error",
+        },
+      );
+    }
 
     throw error;
   }
+
+  const completedAt = new Date();
+
+  // WhatsApp accepted the request. Persist its message ID.
+  // If persistence fails, don't attempt to send the message again here.
+  await db
+    .update(notificationDeliveries)
+    .set({
+      status: "sent",
+      providerMessageId: result.providerMessageId,
+      errorMessage: null,
+    })
+    .where(eq(notificationDeliveries.id, delivery.id));
+
+  const [updatedJob] = await db
+    .update(notificationJobs)
+    .set({
+      status: "sent",
+      processingStartedAt: null,
+      lastError: null,
+      updatedAt: completedAt,
+    })
+    .where(
+      and(
+        eq(notificationJobs.id, job.id),
+        eq(notificationJobs.status, "processing"),
+      ),
+    )
+    .returning({ id: notificationJobs.id });
+
+  if (!updatedJob) {
+    console.error(
+      "WhatsApp accepted the message, but the job status was not updated.",
+      {
+        jobId: job.id,
+        deliveryId: delivery.id,
+        providerMessageId: result.providerMessageId,
+      },
+    );
+  }
+
+  return {
+    success: true as const,
+    jobId: job.id,
+    deliveryId: delivery.id,
+    providerMessageId: result.providerMessageId,
+  };
 }
