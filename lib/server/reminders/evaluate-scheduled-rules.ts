@@ -8,15 +8,11 @@ import {
   reminderRules,
   workspaceSessions,
 } from "@/lib/server/db/schema";
+import { generateReminderMessage } from "@/lib/server/ai/reminder-generator";
+import { reminderRuleConfigSchema } from "@/lib/server/rules/definition";
+import { evaluateReminderRule } from "@/lib/server/rules/evaluator";
+import { createReminderJob } from "@/lib/server/reminders/create-job";
 
-import { reminderRuleConfigSchema } from
-  "@/lib/server/rules/definition";
-import { evaluateReminderRule } from
-  "@/lib/server/rules/evaluator";
-import { createReminderJob } from
-  "@/lib/server/reminders/create-job";
-
-  
 export async function evaluateScheduledRules() {
   const now = new Date();
 
@@ -55,13 +51,19 @@ export async function evaluateScheduledRules() {
 
       due++;
 
+      const message = await generateReminderMessage({
+        ruleName: rule.name,
+        reason: result.reason,
+        personalize: true,
+      });
+
       const created = await createReminderJob({
         userId: rule.userId,
         ruleId: rule.id,
         scheduledAt: now,
         idempotencyKey: result.idempotencyKey,
         payload: {
-          message: `Reminder: ${rule.name}`,
+          message,
           reason: result.reason,
           channelPending: true,
         },
@@ -114,13 +116,19 @@ export async function evaluateScheduledRules() {
 
       due++;
 
+      const message = await generateReminderMessage({
+        ruleName: rule.name,
+        reason: result.reason,
+        personalize: true,
+      });
+
       const created = await createReminderJob({
         userId: rule.userId,
         ruleId: rule.id,
         scheduledAt: now,
         idempotencyKey: result.idempotencyKey,
         payload: {
-          message: `Reminder: ${rule.name}`,
+          message,
           reason: result.reason,
           workspaceId: session.workspaceId,
           sessionId: session.id,

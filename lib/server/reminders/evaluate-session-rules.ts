@@ -8,12 +8,10 @@ import {
   notificationChannels,
   reminderRules,
 } from "@/lib/server/db/schema";
-import { reminderRuleConfigSchema } from
-  "@/lib/server/rules/definition";
-import { evaluateReminderRule } from
-  "@/lib/server/rules/evaluator";
-import { createReminderJob } from
-  "@/lib/server/reminders/create-job";
+import { generateReminderMessage } from "@/lib/server/ai/reminder-generator";
+import { reminderRuleConfigSchema } from "@/lib/server/rules/definition";
+import { evaluateReminderRule } from "@/lib/server/rules/evaluator";
+import { createReminderJob } from "@/lib/server/reminders/create-job";
 
 type SessionSnapshot = {
   sessionId: string;
@@ -44,7 +42,6 @@ export async function evaluateSessionRules(input: {
   let due = 0;
   let jobsCreated = 0;
 
-  // Evaluate rules before checking notification availability.
   for (const rule of rules) {
     if (
       rule.type !== "active_work" &&
@@ -94,7 +91,6 @@ export async function evaluateSessionRules(input: {
 
     due++;
 
-    // Channel lookup happens only after the rule is found due.
     const [channel] = await db
       .select({ id: notificationChannels.id })
       .from(notificationChannels)
@@ -109,8 +105,12 @@ export async function evaluateSessionRules(input: {
       )
       .limit(1);
 
-    // Queue the due reminder even if no channel is configured.
-    // The notification worker must resolve a channel before delivery.
+    const message = await generateReminderMessage({
+      ruleName: rule.name,
+      reason: result.reason,
+      personalize: true,
+    });
+
     const created = await createReminderJob({
       userId,
       ruleId: rule.id,
@@ -118,7 +118,7 @@ export async function evaluateSessionRules(input: {
       scheduledAt: now,
       idempotencyKey: result.idempotencyKey,
       payload: {
-        message: `Reminder: ${rule.name}`,
+        message,
         reason: result.reason,
         workspaceId: session.workspaceId,
         sessionId: session.sessionId,
