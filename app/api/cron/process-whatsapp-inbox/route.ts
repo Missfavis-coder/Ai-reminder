@@ -6,9 +6,6 @@ import {
   recoverStaleWhatsAppWebhookEvents,
 } from "@/lib/server/notifications/whatsapp-webhook-inbox";
 
-export const runtime = "nodejs";
-export const dynamic = "force-dynamic";
-
 function isAuthorized(request: NextRequest): boolean {
   const secret = process.env.CRON_SECRET;
   const authorization = request.headers.get("authorization");

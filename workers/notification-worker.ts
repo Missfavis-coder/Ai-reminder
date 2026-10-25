@@ -1,3 +1,4 @@
+
 import "server-only";
 
 import {
@@ -30,10 +31,13 @@ function getMessage(payload: unknown): string | null {
 
   const message = payload.message;
 
-  return typeof message === "string" &&
-    message.trim().length > 0
-    ? message.trim()
-    : null;
+  if (typeof message !== "string") {
+    return null;
+  }
+
+  const normalized = message.trim();
+
+  return normalized.length > 0 ? normalized : null;
 }
 
 async function claimNotificationJob(
@@ -64,6 +68,29 @@ async function claimNotificationJob(
     });
 
   return job ?? null;
+}
+
+async function markJobFailed(
+  jobId: string,
+  errorMessage: string,
+): Promise<boolean> {
+  const [updated] = await db
+    .update(notificationJobs)
+    .set({
+      status: "failed",
+      processingStartedAt: null,
+      lastError: errorMessage.slice(0, 200),
+      updatedAt: new Date(),
+    })
+    .where(
+      and(
+        eq(notificationJobs.id, jobId),
+        eq(notificationJobs.status, "processing"),
+      ),
+    )
+    .returning({ id: notificationJobs.id });
+
+  return Boolean(updated);
 }
 
 export async function processDueNotificationJobs() {
@@ -100,9 +127,12 @@ export async function processDueNotificationJobs() {
       const message = getMessage(job.payload);
 
       if (!message) {
-        throw new Error(
+        await markJobFailed(
+          job.id,
           "Notification job has no valid message.",
         );
+        failed++;
+        continue;
       }
 
       let channelId = job.channelId;
@@ -123,30 +153,13 @@ export async function processDueNotificationJobs() {
           .limit(1);
 
         if (!channel) {
-          const [updated] = await db
-            .update(notificationJobs)
-            .set({
-              status: "failed",
-              processingStartedAt: null,
-              lastError:
-                "No eligible notification channel is configured.",
-              updatedAt: new Date(),
-            })
-            .where(
-              and(
-                eq(notificationJobs.id, job.id),
-                eq(notificationJobs.status, "processing"),
-              ),
-            )
-            .returning({
-              id: notificationJobs.id,
-            });
+          const updated = await markJobFailed(
+            job.id,
+            "No eligible notification channel is configured.",
+          );
 
-          if (updated) {
-            failed++;
-          } else {
-            skipped++;
-          }
+          if (updated) failed++;
+          else skipped++;
 
           continue;
         }
@@ -165,9 +178,7 @@ export async function processDueNotificationJobs() {
               eq(notificationJobs.status, "processing"),
             ),
           )
-          .returning({
-            id: notificationJobs.id,
-          });
+          .returning({ id: notificationJobs.id });
 
         if (!updated) {
           skipped++;
@@ -190,47 +201,25 @@ export async function processDueNotificationJobs() {
           : "Unknown delivery error";
 
       try {
-        const [updated] = await db
-          .update(notificationJobs)
-          .set({
-            status: "failed",
-            processingStartedAt: null,
-            lastError: errorMessage,
-            updatedAt: new Date(),
-          })
-          .where(
-            and(
-              eq(notificationJobs.id, job.id),
-              eq(notificationJobs.status, "processing"),
-            ),
-          )
-          .returning({
-            id: notificationJobs.id,
-          });
+        const updated = await markJobFailed(
+          job.id,
+          errorMessage,
+        );
 
         if (updated) {
           failed++;
         } else {
-          // The dispatcher or another process may have changed the status.
-          const [currentJob] = await db
-            .select({
-              status: notificationJobs.status,
-            })
-            .from(notificationJobs)
-            .where(eq(notificationJobs.id, job.id))
-            .limit(1);
-
-          if (currentJob?.status === "review") {
-            skipped++;
-          } else {
-            skipped++;
-          }
+          // Another operation may have changed the job to review,
+          // sent, failed, or another non-processing status.
+          skipped++;
         }
       } catch {
+        // Leave the job for reconciliation if persistence fails.
         console.error(
           "Could not update failed notification job status.",
           { jobId: job.id },
         );
+        skipped++;
       }
 
       console.error("Notification job failed", {

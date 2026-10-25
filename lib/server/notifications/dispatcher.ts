@@ -163,44 +163,87 @@ export async function dispatchNotification(
     throw error;
   }
 
+  
   const completedAt = new Date();
 
-  // WhatsApp accepted the request. Persist its message ID.
-  // If persistence fails, don't attempt to send the message again here.
-  await db
-    .update(notificationDeliveries)
-    .set({
-      status: "sent",
-      providerMessageId: result.providerMessageId,
-      errorMessage: null,
-    })
-    .where(eq(notificationDeliveries.id, delivery.id));
-
-  const [updatedJob] = await db
-    .update(notificationJobs)
-    .set({
-      status: "sent",
-      processingStartedAt: null,
-      lastError: null,
-      updatedAt: completedAt,
-    })
-    .where(
-      and(
-        eq(notificationJobs.id, job.id),
-        eq(notificationJobs.status, "processing"),
-      ),
-    )
-    .returning({ id: notificationJobs.id });
-
-  if (!updatedJob) {
-    console.error(
-      "WhatsApp accepted the message, but the job status was not updated.",
-      {
-        jobId: job.id,
-        deliveryId: delivery.id,
+  try {
+    await db
+      .update(notificationDeliveries)
+      .set({
+        status: "sent",
         providerMessageId: result.providerMessageId,
-      },
-    );
+        errorMessage: null,
+      })
+      .where(eq(notificationDeliveries.id, delivery.id));
+
+    const [updatedJob] = await db
+      .update(notificationJobs)
+      .set({
+        status: "sent",
+        processingStartedAt: null,
+        lastError: null,
+        updatedAt: completedAt,
+      })
+      .where(
+        and(
+          eq(notificationJobs.id, job.id),
+          eq(notificationJobs.status, "processing"),
+        ),
+      )
+      .returning({ id: notificationJobs.id });
+
+    if (!updatedJob) {
+      console.error(
+        "WhatsApp accepted the message, but the job status was not updated.",
+        {
+          jobId: job.id,
+          deliveryId: delivery.id,
+          providerMessageId: result.providerMessageId,
+        },
+      );
+
+      throw new Error(
+        "WhatsApp accepted the message, but job completion could not be confirmed.",
+      );
+    }
+  } catch (persistenceError) {
+    const errorMessage =
+      persistenceError instanceof Error
+        ? persistenceError.message.slice(0, 200)
+        : "Could not persist WhatsApp delivery outcome.";
+
+    // Do not automatically retry a message that may already have
+    // been accepted by WhatsApp.
+    try {
+      await db
+        .update(notificationJobs)
+        .set({
+          status: "review",
+          processingStartedAt: null,
+          lastError: `WhatsApp accepted message; persistence uncertain: ${errorMessage}`.slice(
+            0,
+            200,
+          ),
+          updatedAt: new Date(),
+        })
+        .where(
+          and(
+            eq(notificationJobs.id, job.id),
+            eq(notificationJobs.status, "processing"),
+          ),
+        );
+    } catch {
+      console.error(
+        "Could not mark accepted WhatsApp delivery for review.",
+        {
+          jobId: job.id,
+          deliveryId: delivery.id,
+          providerMessageId: result.providerMessageId,
+        },
+      );
+    }
+
+    throw persistenceError;
   }
 
   return {
@@ -209,4 +252,5 @@ export async function dispatchNotification(
     deliveryId: delivery.id,
     providerMessageId: result.providerMessageId,
   };
+
 }

@@ -10,8 +10,6 @@ import {
   type WhatsAppStatusEvent,
 } from "@/lib/server/notifications/whatsapp-webhook-inbox";
 
-export const runtime = "nodejs";
-export const dynamic = "force-dynamic";
 
 type WhatsAppWebhookBody = {
   entry?: Array<{
