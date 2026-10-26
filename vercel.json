@@ -1,0 +1,14 @@
+
+{
+    "crons": [
+      {
+        "path": "/api/cron/evaluate-reminders",
+        "schedule": "* * * * *"
+      },
+      {
+        "path": "/api/cron/process-whatsapp-inbox",
+        "schedule": "* * * * *"
+      }
+    ]
+  }
+  

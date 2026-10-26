@@ -1,26 +1,158 @@
+
 @import "tailwindcss";
 
-:root {
-  --background: #ffffff;
-  --foreground: #171717;
-}
-
 @theme inline {
+  /* Colors */
   --color-background: var(--background);
   --color-foreground: var(--foreground);
-  --font-sans: var(--font-geist-sans);
-  --font-mono: var(--font-geist-mono);
+
+  --color-card: var(--card);
+  --color-card-foreground: var(--card-foreground);
+
+  --color-primary: var(--primary);
+  --color-primary-foreground: var(--primary-foreground);
+
+  --color-secondary: var(--secondary);
+  --color-secondary-foreground: var(--secondary-foreground);
+
+  --color-muted: var(--muted);
+  --color-muted-foreground: var(--muted-foreground);
+
+  --color-accent: var(--accent);
+  --color-accent-foreground: var(--accent-foreground);
+
+  --color-border: var(--border);
+  --color-input: var(--input);
+  --color-ring: var(--ring);
+
+  /* Fonts */
+  --font-sans: var(--font-inter), system-ui, sans-serif;
+  --font-serif: var(--font-instrument-serif), Georgia, serif;
+
+  /* Radius */
+  --radius-sm: calc(var(--radius) - 4px);
+  --radius-md: calc(var(--radius) - 2px);
+  --radius-lg: var(--radius);
+  --radius-xl: calc(var(--radius) + 4px);
 }
 
-@media (prefers-color-scheme: dark) {
-  :root {
-    --background: #0a0a0a;
-    --foreground: #ededed;
-  }
+:root {
+  --radius: 0.75rem;
+
+  /* ─────────────────────────────
+     Core
+  ───────────────────────────── */
+
+  --background: #ffffff;
+  --foreground: #000000;
+
+  /* ─────────────────────────────
+     Cards
+  ───────────────────────────── */
+
+  --card: #000000;
+  --card-foreground: #ffffff;
+
+  /* ─────────────────────────────
+     Primary
+  ───────────────────────────── */
+
+  --primary: #000000;
+  --primary-foreground: #ffffff;
+
+  /* ─────────────────────────────
+     Secondary
+  ───────────────────────────── */
+
+  --secondary: #ffbb00;
+  --secondary-foreground: #000000;
+
+  /* ─────────────────────────────
+     Muted
+  ───────────────────────────── */
+
+  --muted: #f5f5f5;
+  --muted-foreground: #6b6b6b;
+
+  /* ─────────────────────────────
+     Accent
+  ───────────────────────────── */
+
+  --accent: #ffbb00;
+  --accent-foreground: #000000;
+
+  /* ─────────────────────────────
+     Borders / Inputs
+  ───────────────────────────── */
+
+  --border: #e5e5e5;
+  --input: #e5e5e5;
+  --ring: #ffbb00;
+}
+
+/* ─────────────────────────────
+   Base
+───────────────────────────── */
+
+* {
+  border-color: var(--border);
+}
+
+html {
+  scroll-behavior: smooth;
 }
 
 body {
+  margin: 0;
   background: var(--background);
   color: var(--foreground);
-  font-family: Arial, Helvetica, sans-serif;
+  font-family: var(--font-instrument-sans), sans-serif;
+  -webkit-font-smoothing: antialiased;
+  text-rendering: optimizeLegibility;
+}
+
+/* ─────────────────────────────
+   Selection
+───────────────────────────── */
+
+::selection {
+  background: #ffbb00;
+  color: #000000;
+}
+
+/* ─────────────────────────────
+   Scrollbar
+───────────────────────────── */
+
+::-webkit-scrollbar {
+  width: 6px;
+}
+
+::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+::-webkit-scrollbar-thumb {
+  background: #000000;
+  border-radius: 999px;
+}
+
+::-webkit-scrollbar-thumb:hover {
+  background: #ffbb00;
+}
+
+/* ─────────────────────────────
+   Typography
+───────────────────────────── */
+
+.font-serif {
+  font-family: var(--font-instrument-serif), Georgia, serif;
+}
+
+/* ─────────────────────────────
+   Utility
+───────────────────────────── */
+
+.text-balance {
+  text-wrap: balance;
 }
