@@ -1,5 +1,5 @@
 import type { Metadata, Viewport } from "next";
-import { Inter, Geist_Mono, Instrument_Serif, Caveat } from "next/font/google";
+import { Inter, Geist_Mono, Instrument_Serif, Caveat, Instrument_Sans } from "next/font/google";
 
 import "@/app/globals.css";
 import { Providers } from "@/components/shared/provider";
@@ -11,8 +11,8 @@ const inter = Inter({
 });
 
 
-const instrumentSerif = Instrument_Serif({
-  variable: "--font-instrument-serif",
+const instrumentSerif = Instrument_Sans({
+  variable: "--font-instrument-sans",
   subsets: ["latin"],
   weight: "400",
   style: ["normal", "italic"],
