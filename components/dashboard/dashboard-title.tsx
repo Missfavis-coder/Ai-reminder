@@ -36,7 +36,7 @@ export function SiteTitle() {
         <SidebarTrigger className="-ml-1 lg:hidden cursor-pointer rounded-md bg-primary text-white hover:brightness-110" />
 
         <div className="flex flex-col leading-tight">
-          <h1 className="text-sm font-semibold">
+          <h1 className="text-sm font-semibold tracking-wide">
             {title}
           </h1>
         </div>

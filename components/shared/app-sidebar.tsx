@@ -2,18 +2,24 @@
 
 import * as React from "react";
 import {
+  PiChartBar,
   PiCreditCardBold,
   PiEnvelopeBold,
   PiEnvelopeSimple,
   PiFigmaLogo,
   PiFile,
+  PiFlag,
   PiFolderOpenBold,
   PiHouse,
   PiHouseBold,
   PiImagesBold,
   PiListChecks,
+  PiNoteBlank,
+  PiNotebook,
+  PiNoteFill,
   PiPaletteBold,
   PiPlugsConnectedBold,
+  PiPlus,
   PiPlusCircleBold,
   PiShareBold,
   PiSparkleBold,
@@ -49,22 +55,22 @@ const navMain = [
       {
         title: "My Tasks",
         url: "/tasks",
-        icon: PiListChecks,
+        icon: PiNotebook,
       },
       {
         title: "Inbox",
-        url: "/message",
+        url: "/inbox",
         icon: PiEnvelopeSimple,
       },
       {
-        title: "Reporting",
-        url: "/reporting",
-        icon: PiShareBold,
+        title: "Integration",
+        url: "/integrations",
+        icon: PiChartBar,
       },
       {
         title: "Goals",
         url: "/goals",
-        icon: PiPlugsConnectedBold,
+        icon: PiFlag,
       },
 
     ],
@@ -107,7 +113,7 @@ export function AppSidebar({ ...props }: React.ComponentProps<typeof Sidebar>) {
             <Button
               variant="ghost"
               size="icon"
-              className="h-8 w-8 text-sidebar-foreground hover:bg-sidebar-accent hover:text-sidebar-accent-foreground"
+              className="h-8 w-8 text-sidebar-foreground hover:bg-sidebar-accent hover:text-sidebar-accent-foreground cursor-pointer"
               onClick={() => setOpenMobile(false)}
             >
               <PiXBold className="h-5 w-5" />
@@ -118,12 +124,14 @@ export function AppSidebar({ ...props }: React.ComponentProps<typeof Sidebar>) {
       </SidebarHeader>
 
       <SidebarContent className="relative z-10 px-3">
-        <div className="w-full">
+        <div className="w-full mb-4">
           <Button
-          className="w-full flex justify-between items-center py-6 px-4 cursor-pointer"
+          variant="default"
+          size={"icon-lg"}
+          className="w-full flex justify-between items-center py-6 px-4 cursor-pointer text-sm border-none"
           >
             Create
-            <PiPlusCircleBold className="w-6 h-6"/>
+            <PiPlus size={20}/>
           </Button>
         </div>
         <NavMain items={navMain} />
