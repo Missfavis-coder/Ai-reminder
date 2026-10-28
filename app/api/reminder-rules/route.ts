@@ -2,7 +2,8 @@
 import { randomUUID } from "node:crypto";
 import { NextRequest, NextResponse } from "next/server";
 import { ZodError, z } from "zod";
-import { and, desc, eq } from "drizzle-orm";
+import { and, desc, eq, inArray, isNotNull } from "drizzle-orm";
+import { notificationChannels } from "@/lib/server/db/schema";
 
 import { db } from "@/lib/server/db";
 import { reminderRules } from "@/lib/server/db/schema";
@@ -15,6 +16,7 @@ import { reminderRuleConfigSchema } from
 const createRuleSchema = z.object({
   name: z.string().trim().min(1).max(120),
   config: reminderRuleConfigSchema,
+  channelIds: z.array(z.string().uuid()).min(1).max(5),
 });
 
 export async function GET() {
@@ -59,6 +61,32 @@ export async function POST(request: NextRequest) {
     const body: unknown = await request.json();
     const input = createRuleSchema.parse(body);
 
+    const selectedChannels = await db
+  .select({
+    id: notificationChannels.id,
+    type: notificationChannels.type,
+  })
+  .from(notificationChannels)
+  .where(
+    and(
+      eq(notificationChannels.userId, userId),
+      eq(notificationChannels.enabled, true),
+      isNotNull(notificationChannels.verifiedAt),
+      isNotNull(notificationChannels.consentGrantedAt),
+      inArray(notificationChannels.id, input.channelIds),
+    ),
+  );
+
+if (selectedChannels.length !== new Set(input.channelIds).size) {
+  return NextResponse.json(
+    {
+      error:
+        "One or more selected channels are unavailable, unverified, or not connected to your account.",
+    },
+    { status: 400 },
+  );
+}
+
     const [rule] = await db
       .insert(reminderRules)
       .values({
@@ -66,7 +94,10 @@ export async function POST(request: NextRequest) {
         userId,
         name: input.name,
         type: input.config.type,
-        config: input.config,
+        config: {
+          ...input.config,
+          channelIds: input.channelIds,
+        },
         status: "active",
       })
       .returning();

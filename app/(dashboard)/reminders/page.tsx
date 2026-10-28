@@ -1,11 +1,19 @@
 
 "use client";
 
-import { FormEvent, useState } from "react";
+import { useState } from "react";
+import type { FormEvent } from "react";
+import { z } from "zod";
+import { toast } from "sonner";
+
 import {
   useCreateReminderRule,
   useReminderRules,
 } from "@/lib/hooks/use-reminder-rules";
+
+import { useNotificationChannels } from
+  "@/lib/hooks/use-notification-channels";
+
 import type {
   CreateReminderRuleInput,
   ReminderRuleConfig,
@@ -20,12 +28,14 @@ const reminderTypes: {
   {
     value: "active_work",
     label: "Active work",
-    description: "Remind me after working continuously for a set duration.",
+    description:
+      "Remind me after working continuously for a set duration.",
   },
   {
     value: "inactivity",
     label: "Inactivity",
-    description: "Remind me after my workspace has been inactive.",
+    description:
+      "Remind me after my workspace has been inactive.",
   },
   {
     value: "deadline",
@@ -35,14 +45,125 @@ const reminderTypes: {
   {
     value: "fixed_time",
     label: "Fixed time",
-    description: "Send a reminder at a particular date and time.",
+    description:
+      "Send a reminder at a particular date and time.",
   },
 ];
+
+const reminderFormSchema = z
+  .object({
+    name: z
+      .string()
+      .trim()
+      .min(1, "Enter a name for this reminder.")
+      .max(120, "Reminder name cannot exceed 120 characters."),
+
+    type: z.enum([
+      "active_work",
+      "inactivity",
+      "deadline",
+      "fixed_time",
+    ]),
+
+    thresholdMinutes: z.string(),
+    leadTimeMinutes: z.string(),
+    deadlineAt: z.string(),
+    scheduledAt: z.string(),
+    repeat: z.boolean(),
+
+    channelIds: z
+      .array(z.string().uuid("Select a valid notification channel."))
+      .min(1, "Select at least one notification channel.")
+      .max(5, "Select no more than 5 notification channels.")
+      .refine(
+        (ids) => new Set(ids).size === ids.length,
+        "A notification channel cannot be selected more than once.",
+      ),
+  })
+  .superRefine((data, ctx) => {
+    if (
+      data.type === "active_work" ||
+      data.type === "inactivity"
+    ) {
+      const minutes = Number(data.thresholdMinutes);
+
+      if (
+        data.thresholdMinutes.trim() === "" ||
+        !Number.isFinite(minutes) ||
+        minutes < 1 ||
+        minutes > 1440
+      ) {
+        ctx.addIssue({
+          code: "custom",
+          path: ["thresholdMinutes"],
+          message: "Duration must be between 1 and 1440 minutes.",
+        });
+      }
+    }
+
+    if (data.type === "deadline") {
+      const leadMinutes = Number(data.leadTimeMinutes);
+      const deadline = new Date(data.deadlineAt);
+
+      if (
+        !data.deadlineAt ||
+        Number.isNaN(deadline.getTime())
+      ) {
+        ctx.addIssue({
+          code: "custom",
+          path: ["deadlineAt"],
+          message: "Choose a valid deadline.",
+        });
+      } else if (deadline.getTime() <= Date.now()) {
+        ctx.addIssue({
+          code: "custom",
+          path: ["deadlineAt"],
+          message: "The deadline must be in the future.",
+        });
+      }
+
+      if (
+        data.leadTimeMinutes.trim() === "" ||
+        !Number.isFinite(leadMinutes) ||
+        leadMinutes < 1 ||
+        leadMinutes > 1440
+      ) {
+        ctx.addIssue({
+          code: "custom",
+          path: ["leadTimeMinutes"],
+          message: "Lead time must be between 1 and 1440 minutes.",
+        });
+      }
+    }
+
+    if (data.type === "fixed_time") {
+      const scheduled = new Date(data.scheduledAt);
+
+      if (
+        !data.scheduledAt ||
+        Number.isNaN(scheduled.getTime())
+      ) {
+        ctx.addIssue({
+          code: "custom",
+          path: ["scheduledAt"],
+          message: "Choose a valid reminder date and time.",
+        });
+      } else if (scheduled.getTime() <= Date.now()) {
+        ctx.addIssue({
+          code: "custom",
+          path: ["scheduledAt"],
+          message: "The reminder time must be in the future.",
+        });
+      }
+    }
+  });
 
 function formatDate(value: string) {
   const date = new Date(value);
 
-  if (Number.isNaN(date.getTime())) return "Not scheduled";
+  if (Number.isNaN(date.getTime())) {
+    return "Not scheduled";
+  }
 
   return date.toLocaleString(undefined, {
     dateStyle: "medium",
@@ -66,99 +187,104 @@ function describeRule(config: ReminderRuleConfig) {
   }
 }
 
+const channelLabels: Record<string, string> = {
+  whatsapp: "WhatsApp",
+  web_push: "Web Push",
+  desktop: "Desktop notifications",
+  email: "Email",
+  instagram: "Instagram",
+};
+
 export default function RemindersPage() {
-  const { data: rules = [], isLoading, isError, error } =
-    useReminderRules();
+  const {
+    data: rules = [],
+    isLoading,
+    isError,
+    error,
+  } = useReminderRules();
 
   const createRule = useCreateReminderRule();
+
+  const {
+    data: channels = [],
+    isLoading: channelsLoading,
+    isError: channelsError,
+  } = useNotificationChannels();
 
   const [name, setName] = useState("");
   const [type, setType] =
     useState<ReminderRuleType>("inactivity");
-  const [thresholdMinutes, setThresholdMinutes] = useState("20");
-  const [leadTimeMinutes, setLeadTimeMinutes] = useState("30");
+  const [thresholdMinutes, setThresholdMinutes] =
+    useState("20");
+  const [leadTimeMinutes, setLeadTimeMinutes] =
+    useState("30");
   const [deadlineAt, setDeadlineAt] = useState("");
   const [scheduledAt, setScheduledAt] = useState("");
   const [repeat, setRepeat] = useState(false);
-  const [formError, setFormError] = useState("");
+  const [selectedChannelIds, setSelectedChannelIds] =
+    useState<string[]>([]);
 
-  async function handleSubmit(event: FormEvent<HTMLFormElement>) {
+  async function handleSubmit(
+    event: FormEvent<HTMLFormElement>,
+  ) {
     event.preventDefault();
-    setFormError("");
 
-    const trimmedName = name.trim();
+    const validation = reminderFormSchema.safeParse({
+      name,
+      type,
+      thresholdMinutes,
+      leadTimeMinutes,
+      deadlineAt,
+      scheduledAt,
+      repeat,
+      channelIds: selectedChannelIds,
+    });
 
-    if (!trimmedName) {
-      setFormError("Enter a name for this reminder.");
+    if (!validation.success) {
+      toast.error(
+        validation.error.issues[0]?.message ??
+          "Please check your input.",
+      );
       return;
     }
 
+    const values = validation.data;
+
     let config: ReminderRuleConfig;
 
-    if (type === "active_work" || type === "inactivity") {
-      const minutes = Number(thresholdMinutes);
-
-      if (!Number.isFinite(minutes) || minutes < 1 || minutes > 1440) {
-        setFormError("Duration must be between 1 and 1440 minutes.");
-        return;
-      }
-
+    if (
+      values.type === "active_work" ||
+      values.type === "inactivity"
+    ) {
       config = {
-        type,
-        thresholdSeconds: Math.round(minutes * 60),
-        repeat,
+        type: values.type,
+        thresholdSeconds: Number(values.thresholdMinutes) * 60,
+        repeat: values.repeat,
       };
-    } else if (type === "deadline") {
-      const leadMinutes = Number(leadTimeMinutes);
-
-      if (!deadlineAt || Number.isNaN(new Date(deadlineAt).getTime())) {
-        setFormError("Choose a valid deadline.");
-        return;
-      }
-
-      if (
-        !Number.isFinite(leadMinutes) ||
-        leadMinutes < 1 ||
-        leadMinutes > 1440
-      ) {
-        setFormError("Lead time must be between 1 and 1440 minutes.");
-        return;
-      }
-
-      if (new Date(deadlineAt).getTime() <= Date.now()) {
-        setFormError("The deadline must be in the future.");
-        return;
-      }
-
+    } else if (values.type === "deadline") {
       config = {
         type: "deadline",
-        deadlineAt: new Date(deadlineAt).toISOString(),
-        leadTimeSeconds: Math.round(leadMinutes * 60),
+        deadlineAt: new Date(values.deadlineAt).toISOString(),
+        leadTimeSeconds: Number(values.leadTimeMinutes) * 60,
       };
     } else {
-      if (!scheduledAt || Number.isNaN(new Date(scheduledAt).getTime())) {
-        setFormError("Choose a valid reminder date and time.");
-        return;
-      }
-
-      if (new Date(scheduledAt).getTime() <= Date.now()) {
-        setFormError("The reminder time must be in the future.");
-        return;
-      }
-
       config = {
         type: "fixed_time",
-        scheduledAt: new Date(scheduledAt).toISOString(),
+        scheduledAt: new Date(values.scheduledAt).toISOString(),
       };
     }
 
     const input: CreateReminderRuleInput = {
-      name: trimmedName,
+      name: values.name,
       config,
+      channelIds: values.channelIds,
     };
 
     try {
       await createRule.mutateAsync(input);
+
+      toast.success("Reminder created successfully!");
+
       setName("");
       setType("inactivity");
       setThresholdMinutes("20");
@@ -166,8 +292,9 @@ export default function RemindersPage() {
       setDeadlineAt("");
       setScheduledAt("");
       setRepeat(false);
+      setSelectedChannelIds([]);
     } catch (err) {
-      setFormError(
+      toast.error(
         err instanceof Error
           ? err.message
           : "Could not create the reminder. Please try again.",
@@ -175,15 +302,35 @@ export default function RemindersPage() {
     }
   }
 
+  function toggleChannel(
+    channelId: string,
+    checked: boolean,
+  ) {
+    setSelectedChannelIds((current) => {
+      if (checked) {
+        if (
+          current.includes(channelId) ||
+          current.length >= 5
+        ) {
+          return current;
+        }
+
+        return [...current, channelId];
+      }
+
+      return current.filter((id) => id !== channelId);
+    });
+  }
+
   return (
     <div className="mx-auto w-full max-w-6xl space-y-8 p-4 md:p-8">
       <header>
-        <p className="text-sm font-medium text-primary">
-          PERSONAL PRODUCTIVITY
-        </p>
+       
+
         <h1 className="mt-2 text-3xl font-bold tracking-tight">
           Reminder settings
         </h1>
+
         <p className="mt-2 max-w-2xl text-sm text-muted-foreground">
           Set rules for when you want to be reminded about your work,
           inactivity, and upcoming deadlines.
@@ -193,7 +340,10 @@ export default function RemindersPage() {
       <div className="grid gap-6 lg:grid-cols-[minmax(0,1fr)_minmax(0,1fr)]">
         <section className="rounded-xl border border-border bg-card p-5 md:p-6">
           <div className="mb-6">
-            <h2 className="text-lg font-semibold">Create a reminder</h2>
+            <h2 className="text-lg font-semibold">
+              Create a reminder
+            </h2>
+
             <p className="mt-1 text-sm text-muted-foreground">
               Choose a trigger and configure when it should apply.
             </p>
@@ -201,9 +351,13 @@ export default function RemindersPage() {
 
           <form onSubmit={handleSubmit} className="space-y-5">
             <div className="space-y-2">
-              <label htmlFor="reminder-name" className="text-sm font-medium">
+              <label
+                htmlFor="reminder-name"
+                className="text-sm font-medium"
+              >
                 Reminder name
               </label>
+
               <input
                 id="reminder-name"
                 value={name}
@@ -216,9 +370,13 @@ export default function RemindersPage() {
             </div>
 
             <div className="space-y-2">
-              <label htmlFor="reminder-type" className="text-sm font-medium">
+              <label
+                htmlFor="reminder-type"
+                className="text-sm font-medium"
+              >
                 Reminder type
               </label>
+
               <select
                 id="reminder-type"
                 value={type}
@@ -233,12 +391,17 @@ export default function RemindersPage() {
                   </option>
                 ))}
               </select>
+
               <p className="text-xs text-muted-foreground">
-                {reminderTypes.find((item) => item.value === type)?.description}
+                {
+                  reminderTypes.find((item) => item.value === type)
+                    ?.description
+                }
               </p>
             </div>
 
-            {(type === "active_work" || type === "inactivity") && (
+            {(type === "active_work" ||
+              type === "inactivity") && (
               <>
                 <div className="space-y-2">
                   <label
@@ -247,6 +410,7 @@ export default function RemindersPage() {
                   >
                     Duration (minutes)
                   </label>
+
                   <input
                     id="threshold"
                     type="number"
@@ -259,6 +423,7 @@ export default function RemindersPage() {
                     required
                     className="w-full rounded-lg border border-input bg-background px-3 py-2.5 text-sm outline-none focus:ring-2 focus:ring-ring"
                   />
+
                   <p className="text-xs text-muted-foreground">
                     Minimum 1 minute; maximum 24 hours.
                   </p>
@@ -268,16 +433,20 @@ export default function RemindersPage() {
                   <input
                     type="checkbox"
                     checked={repeat}
-                    onChange={(event) => setRepeat(event.target.checked)}
+                    onChange={(event) =>
+                      setRepeat(event.target.checked)
+                    }
                     className="mt-1"
                   />
+
                   <span>
                     <span className="block text-sm font-medium">
                       Repeat this reminder
                     </span>
+
                     <span className="mt-1 block text-xs text-muted-foreground">
-                      Allow the rule to remind me again when its conditions
-                      are met, if supported by the rule evaluator.
+                      Allow the rule to remind me again when its
+                      conditions are met, if supported by the evaluator.
                     </span>
                   </span>
                 </label>
@@ -287,23 +456,33 @@ export default function RemindersPage() {
             {type === "deadline" && (
               <>
                 <div className="space-y-2">
-                  <label htmlFor="deadline" className="text-sm font-medium">
+                  <label
+                    htmlFor="deadline"
+                    className="text-sm font-medium"
+                  >
                     Deadline date and time
                   </label>
+
                   <input
                     id="deadline"
                     type="datetime-local"
                     value={deadlineAt}
-                    onChange={(event) => setDeadlineAt(event.target.value)}
+                    onChange={(event) =>
+                      setDeadlineAt(event.target.value)
+                    }
                     required
                     className="w-full rounded-lg border border-input bg-background px-3 py-2.5 text-sm outline-none focus:ring-2 focus:ring-ring"
                   />
                 </div>
 
                 <div className="space-y-2">
-                  <label htmlFor="lead-time" className="text-sm font-medium">
+                  <label
+                    htmlFor="lead-time"
+                    className="text-sm font-medium"
+                  >
                     Remind me this many minutes before
                   </label>
+
                   <input
                     id="lead-time"
                     type="number"
@@ -322,38 +501,123 @@ export default function RemindersPage() {
 
             {type === "fixed_time" && (
               <div className="space-y-2">
-                <label htmlFor="scheduled-at" className="text-sm font-medium">
+                <label
+                  htmlFor="scheduled-at"
+                  className="text-sm font-medium"
+                >
                   Reminder date and time
                 </label>
+
                 <input
                   id="scheduled-at"
                   type="datetime-local"
                   value={scheduledAt}
-                  onChange={(event) => setScheduledAt(event.target.value)}
+                  onChange={(event) =>
+                    setScheduledAt(event.target.value)
+                  }
                   required
                   className="w-full rounded-lg border border-input bg-background px-3 py-2.5 text-sm outline-none focus:ring-2 focus:ring-ring"
                 />
               </div>
             )}
 
-            {formError && (
-              <p role="alert" className="rounded-lg bg-destructive/10 p-3 text-sm text-destructive">
-                {formError}
-              </p>
-            )}
+            <div className="space-y-3">
+              <div>
+                <label className="text-sm font-medium">
+                  Where should we send this reminder?
+                </label>
 
-            {createRule.isSuccess && (
-              <p role="status" className="text-sm text-green-600">
-                Reminder created successfully.
+                <p className="mt-1 text-xs text-muted-foreground">
+                  Select one or more verified notification channels.
+                  You can select up to five.
+                </p>
+              </div>
+
+              {channelsLoading && (
+                <p className="text-sm text-muted-foreground">
+                  Loading connected channels...
+                </p>
+              )}
+
+              {channelsError && (
+                <p className="text-sm text-destructive">
+                  Could not load your notification channels.
+                  Please refresh and try again.
+                </p>
+              )}
+
+              {!channelsLoading &&
+                !channelsError &&
+                channels.length === 0 && (
+                  <div className="rounded-lg border border-dashed p-4">
+                    <p className="text-sm font-medium">
+                      No verified channels available
+                    </p>
+
+                    <p className="mt-1 text-xs text-muted-foreground">
+                      Connect and verify a notification channel on
+                      the Integrations page before creating this
+                      reminder.
+                    </p>
+
+                    <a
+                      href="/integrations"
+                      className="mt-3 inline-block text-sm font-medium underline"
+                    >
+                      Go to Integrations
+                    </a>
+                  </div>
+                )}
+
+              {channels.map((channel) => (
+                <label
+                  key={channel.id}
+                  className="flex cursor-pointer items-center gap-3 rounded-lg border border-border p-3"
+                >
+                  <input
+                    type="checkbox"
+                    checked={selectedChannelIds.includes(channel.id)}
+                    disabled={
+                      !selectedChannelIds.includes(channel.id) &&
+                      selectedChannelIds.length >= 5
+                    }
+                    onChange={(event) =>
+                      toggleChannel(channel.id, event.target.checked)
+                    }
+                    className="size-4"
+                  />
+
+                  <span className="min-w-0 flex-1">
+                    <span className="block text-sm font-medium">
+                      {channelLabels[channel.type] ?? channel.type}
+                    </span>
+
+                    <span className="block truncate text-xs text-muted-foreground">
+                      {channel.destination}
+                    </span>
+                  </span>
+                </label>
+              ))}
+
+              <p className="text-xs text-muted-foreground">
+                {selectedChannelIds.length} of 5 channels selected.
               </p>
-            )}
+            </div>
 
             <button
               type="submit"
-              disabled={createRule.isPending}
+              disabled={
+                createRule.isPending ||
+                channelsLoading ||
+                channelsError ||
+                channels.length === 0 ||
+                selectedChannelIds.length === 0
+              }
               className="w-full rounded-lg bg-primary px-4 py-2.5 text-sm font-semibold text-primary-foreground transition-opacity hover:opacity-90 disabled:cursor-not-allowed disabled:opacity-60"
             >
-              {createRule.isPending ? "Creating reminder..." : "Create reminder"}
+              {createRule.isPending
+                ? "Creating reminder..."
+                : "Create reminder"}
             </button>
           </form>
         </section>
@@ -361,11 +625,15 @@ export default function RemindersPage() {
         <section className="rounded-xl border border-border bg-card p-5 md:p-6">
           <div className="mb-6 flex items-start justify-between gap-3">
             <div>
-              <h2 className="text-lg font-semibold">Your reminders</h2>
+              <h2 className="text-lg font-semibold">
+                Your reminders
+              </h2>
+
               <p className="mt-1 text-sm text-muted-foreground">
                 Reminder rules saved to your account.
               </p>
             </div>
+
             <span className="rounded-full bg-secondary px-3 py-1 text-sm font-medium">
               {rules.length}
             </span>
@@ -378,7 +646,7 @@ export default function RemindersPage() {
           )}
 
           {isError && (
-            <p role="alert" className="py-8 text-center text-sm text-destructive">
+            <p className="py-8 text-center text-sm text-destructive">
               {error instanceof Error
                 ? error.message
                 : "Could not load your reminders."}
@@ -387,10 +655,17 @@ export default function RemindersPage() {
 
           {!isLoading && !isError && rules.length === 0 && (
             <div className="rounded-xl border border-dashed border-border px-4 py-12 text-center">
-              <div className="text-3xl" aria-hidden="true">🔔</div>
-              <h3 className="mt-3 font-semibold">No reminders yet</h3>
+              <div className="text-3xl" aria-hidden="true">
+                🔔
+              </div>
+
+              <h3 className="mt-3 font-semibold">
+                No reminders yet
+              </h3>
+
               <p className="mx-auto mt-2 max-w-xs text-sm text-muted-foreground">
-                Create your first rule to decide when you want to be reminded.
+                Create your first rule to decide when you want to be
+                reminded.
               </p>
             </div>
           )}
@@ -403,11 +678,15 @@ export default function RemindersPage() {
               >
                 <div className="flex items-start justify-between gap-3">
                   <div className="min-w-0">
-                    <h3 className="break-words font-semibold">{rule.name}</h3>
+                    <h3 className="break-words font-semibold">
+                      {rule.name}
+                    </h3>
+
                     <p className="mt-1 text-sm text-muted-foreground">
                       {describeRule(rule.config)}
                     </p>
                   </div>
+
                   <span
                     className={`shrink-0 rounded-full px-2.5 py-1 text-xs font-medium ${
                       rule.status === "active"
@@ -421,8 +700,9 @@ export default function RemindersPage() {
 
                 <p className="mt-3 text-xs text-muted-foreground">
                   Type:{" "}
-                  {reminderTypes.find((item) => item.value === rule.type)?.label ??
-                    rule.type}
+                  {reminderTypes.find(
+                    (item) => item.value === rule.type,
+                  )?.label ?? rule.type}
                 </p>
               </article>
             ))}
