@@ -1,14 +1,22 @@
 import { NextRequest, NextResponse } from "next/server";
 import { and, eq } from "drizzle-orm";
 import { z, ZodError } from "zod";
-
+import type { InferInsertModel } from "drizzle-orm";
 import { db } from "@/lib/server/db";
 import { tasks } from "@/lib/server/db/schema";
 import { getCurrentUserId } from "@/lib/server/auth/session";
 
 const updateTaskSchema = z.object({
   title: z.string().trim().min(1).max(250).optional(),
+  description: z.string().trim().max(2000).nullable().optional(),
   completed: z.boolean().optional(),
+  status: z.enum(["To Do", "In Progress", "Completed"]).optional(),
+  dueAt: z.string().datetime().nullable().optional(),
+  priority: z.enum(["Low", "Medium", "High"]).optional(),
+  category: z.string().trim().min(1).max(100).optional(),
+  reminderEnabled: z.boolean().optional(),
+  reminderAt: z.string().datetime().nullable().optional(),
+  reminderChannelIds: z.array(z.string().uuid()).optional(),
 });
 
 type RouteContext = {
@@ -31,31 +39,40 @@ export async function PATCH(
 
     const { id } = await context.params;
     const input = updateTaskSchema.parse(await request.json());
+    const { dueAt, reminderAt, reminderChannelIds, ...rest } = input;
 
-    if (input.title === undefined && input.completed === undefined) {
-      return NextResponse.json(
-        { error: "Provide a title or completion status." },
-        { status: 400 },
-      );
-    }
-
-    const [task] = await db
+    const updateData = {
+      ...rest,
+    
+      ...(rest.status !== undefined && {
+        completed: rest.status === "Completed",
+      }),
+    
+      ...(dueAt !== undefined && {
+        dueAt: dueAt === null ? null : new Date(dueAt),
+      }),
+    
+      ...(reminderAt !== undefined && {
+        reminderAt: reminderAt === null ? null : new Date(reminderAt),
+      }),
+    
+      updatedAt: new Date(),
+    };
+    
+    const [updatedTask] = await db
       .update(tasks)
-      .set({
-        ...input,
-        updatedAt: new Date(),
-      })
+      .set(updateData)
       .where(and(eq(tasks.id, id), eq(tasks.userId, userId)))
       .returning();
 
-    if (!task) {
-      return NextResponse.json(
-        { error: "Task not found." },
-        { status: 404 },
-      );
-    }
+if (!updatedTask) {
+  return NextResponse.json(
+    { error: "Task not found." },
+    { status: 404 },
+  );
+}
 
-    return NextResponse.json({ task });
+return NextResponse.json({ task: updatedTask });
   } catch (error) {
     if (error instanceof ZodError) {
       return NextResponse.json(

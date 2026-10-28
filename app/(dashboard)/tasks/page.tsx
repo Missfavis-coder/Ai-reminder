@@ -4,12 +4,10 @@
 import { useMemo, useState } from "react";
 import {
   PiCalendarBlank,
-  PiCaretDown,
   PiCheck,
   PiChecks,
   PiClipboardText,
   PiClock,
-  PiDotsThree,
   PiFunnel,
   PiMagnifyingGlass,
   PiPlus,
@@ -20,12 +18,19 @@ import {
 } from "react-icons/pi";
 
 import { Button } from "@/components/ui/button";
+import {
+  useTasks,
+  useCreateTask,
+  useUpdateTask,
+  useDeleteTask,
+} from "@/lib/hooks/use-tasks";
+import type { Task as ApiTask } from "@/lib/types/tasks";
 
 type TaskStatus = "To Do" | "In Progress" | "Completed";
 type TaskPriority = "Low" | "Medium" | "High";
 
 type Task = {
-  id: number;
+  id: string;
   title: string;
   description: string;
   status: TaskStatus;
@@ -33,63 +38,6 @@ type Task = {
   dueDate: string;
   category: string;
 };
-
-const initialTasks: Task[] = [
-  {
-    id: 1,
-    title: "Finish landing page design",
-    description: "Finalize the new dashboard and responsive layouts.",
-    status: "In Progress",
-    priority: "High",
-    dueDate: "2026-10-28",
-    category: "Design",
-  },
-  {
-    id: 2,
-    title: "Review project requirements",
-    description: "Go through the requirements and update the checklist.",
-    status: "To Do",
-    priority: "Medium",
-    dueDate: "2026-10-29",
-    category: "Planning",
-  },
-  {
-    id: 3,
-    title: "Prepare weekly report",
-    description: "Summarize the team's progress and outstanding tasks.",
-    status: "To Do",
-    priority: "Low",
-    dueDate: "2026-10-30",
-    category: "Work",
-  },
-  {
-    id: 4,
-    title: "Update component library",
-    description: "Polish reusable buttons, cards, and form components.",
-    status: "In Progress",
-    priority: "High",
-    dueDate: "2026-10-28",
-    category: "Development",
-  },
-  {
-    id: 5,
-    title: "Test reminder notifications",
-    description: "Verify reminder scheduling and delivery behaviour.",
-    status: "Completed",
-    priority: "Medium",
-    dueDate: "2026-10-25",
-    category: "Development",
-  },
-  {
-    id: 6,
-    title: "Organize team meeting",
-    description: "Prepare the agenda and share the meeting details.",
-    status: "Completed",
-    priority: "Low",
-    dueDate: "2026-10-24",
-    category: "Planning",
-  },
-];
 
 const statuses: TaskStatus[] = ["To Do", "In Progress", "Completed"];
 
@@ -99,11 +47,19 @@ const priorityStyles: Record<TaskPriority, string> = {
   High: "bg-accent/20 text-foreground",
 };
 
-const statusStyles: Record<TaskStatus, string> = {
-  "To Do": "bg-muted text-muted-foreground",
-  "In Progress": "bg-secondary text-foreground",
-  Completed: "bg-primary/10 text-primary",
-};
+function mapApiTask(task: ApiTask): Task {
+  return {
+    id: task.id,
+    title: task.title,
+    description: task.description ?? "",
+    status:
+      task.status ??
+      (task.completed ? "Completed" : "To Do"),
+    priority: task.priority ?? "Medium",
+    dueDate: task.dueAt ? String(task.dueAt).slice(0, 10) : "",
+    category: task.category ?? "General",
+  };
+}
 
 function formatDate(date: string) {
   if (!date) return "No due date";
@@ -115,7 +71,18 @@ function formatDate(date: string) {
 }
 
 export default function TasksPage() {
-  const [tasks, setTasks] = useState<Task[]>(initialTasks);
+  const {
+    data: apiTasks = [],
+    isLoading,
+    isError,
+  } = useTasks();
+
+  const createTaskMutation = useCreateTask();
+  const updateTaskMutation = useUpdateTask();
+  const deleteTaskMutation = useDeleteTask();
+
+  const tasks = useMemo(() => apiTasks.map(mapApiTask), [apiTasks]);
+
   const [search, setSearch] = useState("");
   const [statusFilter, setStatusFilter] = useState("All");
   const [priorityFilter, setPriorityFilter] = useState("All");
@@ -125,7 +92,8 @@ export default function TasksPage() {
 
   const [newTitle, setNewTitle] = useState("");
   const [newDescription, setNewDescription] = useState("");
-  const [newPriority, setNewPriority] = useState<TaskPriority>("Medium");
+  const [newPriority, setNewPriority] =
+    useState<TaskPriority>("Medium");
   const [newDueDate, setNewDueDate] = useState("");
   const [newCategory, setNewCategory] = useState("General");
 
@@ -156,39 +124,53 @@ export default function TasksPage() {
     completed: tasks.filter((task) => task.status === "Completed").length,
   };
 
-  function createTask(event: React.FormEvent<HTMLFormElement>) {
+  async function createTask(event: React.FormEvent<HTMLFormElement>) {
     event.preventDefault();
 
     const title = newTitle.trim();
-    if (!title) return;
 
-    const task: Task = {
-      id: Date.now(),
-      title,
-      description: newDescription.trim(),
-      status: "To Do",
-      priority: newPriority,
-      dueDate: newDueDate,
-      category: newCategory.trim() || "General",
-    };
+    if (!title || createTaskMutation.isPending) return;
 
-    setTasks((current) => [task, ...current]);
-    setNewTitle("");
-    setNewDescription("");
-    setNewPriority("Medium");
-    setNewDueDate("");
-    setNewCategory("General");
-    setShowCreateForm(false);
+    try {
+      await createTaskMutation.mutateAsync({
+        title,
+        description: newDescription.trim() || undefined,
+        dueAt: newDueDate
+          ? new Date(`${newDueDate}T12:00:00`).toISOString()
+          : undefined,
+      });
+
+      setNewTitle("");
+      setNewDescription("");
+      setNewPriority("Medium");
+      setNewDueDate("");
+      setNewCategory("General");
+      setShowCreateForm(false);
+    } catch (error) {
+      console.error("Failed to create task:", error);
+    }
   }
 
-  function updateStatus(id: number, status: TaskStatus) {
-    setTasks((current) =>
-      current.map((task) => (task.id === id ? { ...task, status } : task))
-    );
+  async function updateStatus(id: string, status: TaskStatus) {
+    try {
+      await updateTaskMutation.mutateAsync({
+        id,
+        input: {
+          status,
+          completed: status === "Completed",
+        },
+      });
+    } catch (error) {
+      console.error("Failed to update task:", error);
+    }
   }
 
-  function deleteTask(id: number) {
-    setTasks((current) => current.filter((task) => task.id !== id));
+  async function deleteTask(id: string) {
+    try {
+      await deleteTaskMutation.mutateAsync(id);
+    } catch (error) {
+      console.error("Failed to delete task:", error);
+    }
   }
 
   function TaskCard({ task }: { task: Task }) {
@@ -214,7 +196,9 @@ export default function TasksPage() {
                 : "border-input bg-background hover:border-primary"
             }`}
           >
-            {task.status === "Completed" && <PiCheck className="size-3.5" />}
+            {task.status === "Completed" && (
+              <PiCheck className="size-3.5" />
+            )}
           </button>
 
           <div className="min-w-0 flex-1">
@@ -255,6 +239,7 @@ export default function TasksPage() {
               <select
                 aria-label={`Status for ${task.title}`}
                 value={task.status}
+                disabled={updateTaskMutation.isPending}
                 onChange={(event) =>
                   updateStatus(task.id, event.target.value as TaskStatus)
                 }
@@ -271,9 +256,10 @@ export default function TasksPage() {
 
           <button
             type="button"
+            disabled={deleteTaskMutation.isPending}
             onClick={() => deleteTask(task.id)}
             aria-label={`Delete ${task.title}`}
-            className="rounded-md p-1.5 text-muted-foreground opacity-100 transition hover:bg-accent/20 hover:text-foreground sm:opacity-0 sm:group-hover:opacity-100 cursor-pointer"
+            className="cursor-pointer rounded-md p-1.5 text-muted-foreground transition hover:bg-accent/20 hover:text-foreground sm:opacity-0 sm:group-hover:opacity-100"
           >
             <PiTrash className="size-4" />
           </button>
@@ -285,48 +271,26 @@ export default function TasksPage() {
   return (
     <main className="min-h-screen bg-background px-4 py-6 text-foreground sm:px-6 lg:px-8">
       <div className="space-y-6">
-        {/* Page heading */}
         <section className="flex flex-col justify-between gap-4 sm:flex-row sm:items-center">
-          <div>
-
-            <h1 className="text-2xl font-semibold tracking-tight sm:text-2xl">
-              My Tasks
-            </h1>
-
-          </div>
+          <h1 className="text-2xl font-semibold tracking-tight">
+            My Tasks
+          </h1>
 
           <Button
             onClick={() => setShowCreateForm(true)}
-            className="h-10 gap-2 rounded-lg px-8 cursor-pointer"
+            className="h-10 cursor-pointer gap-2 rounded-lg px-8"
           >
             <PiPlus className="size-4" />
             Create task
           </Button>
         </section>
 
-        {/* Summary cards */}
         <section className="grid grid-cols-2 gap-3 xl:grid-cols-4">
           {[
-            {
-              label: "All tasks",
-              count: counts.all,
-              icon: PiClipboardText,
-            },
-            {
-              label: "To do",
-              count: counts.todo,
-              icon: PiClock,
-            },
-            {
-              label: "In progress",
-              count: counts.inProgress,
-              icon: PiSquaresFour,
-            },
-            {
-              label: "Completed",
-              count: counts.completed,
-              icon: PiChecks,
-            },
+            { label: "All tasks", count: counts.all, icon: PiClipboardText },
+            { label: "To do", count: counts.todo, icon: PiClock },
+            { label: "In progress", count: counts.inProgress, icon: PiSquaresFour },
+            { label: "Completed", count: counts.completed, icon: PiChecks },
           ].map((item) => {
             const Icon = item.icon;
 
@@ -336,16 +300,12 @@ export default function TasksPage() {
                 className="rounded-xl bg-neutral-100 p-4 text-card-foreground"
               >
                 <div className="flex items-center justify-between gap-3">
-                  <p className="text-sm text-neutral-600">
-                    {item.label}
-                  </p>
-
+                  <p className="text-sm text-neutral-600">{item.label}</p>
                   <span className="flex size-8 items-center justify-center rounded-lg bg-secondary text-foreground">
                     <Icon className="size-4" />
                   </span>
                 </div>
-
-                <p className="mt-3 text-2xl  text-neutral-950 font-semibold tracking-tight">
+                <p className="mt-3 text-2xl font-semibold tracking-tight text-neutral-950">
                   {item.count}
                 </p>
               </div>
@@ -353,12 +313,13 @@ export default function TasksPage() {
           })}
         </section>
 
-        {/* Task workspace */}
         <section className="rounded-xl bg-neutral-100 text-card-foreground">
           <div className="flex flex-col gap-4 border-b border-border p-4 sm:p-5">
             <div className="flex flex-col justify-between gap-3 sm:flex-row sm:items-center">
               <div>
-                <h2 className="text-[15px] font-semibold text-neutral-900">All tasks</h2>
+                <h2 className="text-[15px] font-semibold text-neutral-900">
+                  All tasks
+                </h2>
                 <p className="mt-1 text-sm text-muted-foreground">
                   Manage your work and track your progress.
                 </p>
@@ -369,7 +330,7 @@ export default function TasksPage() {
                   <button
                     type="button"
                     onClick={() => setView("List")}
-                    className={`flex h-8 items-center gap-1.5 rounded-md px-3 text-sm transition cursor-pointer ${
+                    className={`flex h-8 cursor-pointer items-center gap-1.5 rounded-md px-3 text-sm transition ${
                       view === "List"
                         ? "bg-primary text-primary-foreground"
                         : "text-muted-foreground hover:text-foreground"
@@ -382,7 +343,7 @@ export default function TasksPage() {
                   <button
                     type="button"
                     onClick={() => setView("Board")}
-                    className={`flex h-8 items-center gap-1.5 rounded-md px-3 text-sm transition cursor-pointer ${
+                    className={`flex h-8 cursor-pointer items-center gap-1.5 rounded-md px-3 text-sm transition ${
                       view === "Board"
                         ? "bg-primary text-primary-foreground"
                         : "text-muted-foreground hover:text-foreground"
@@ -397,18 +358,15 @@ export default function TasksPage() {
                   size="icon"
                   aria-label="Toggle filters"
                   onClick={() => setShowFilters((current) => !current)}
-                  className="pointer-events-none"
                 >
                   <PiFunnel className="size-4" />
                 </Button>
               </div>
             </div>
 
-            {/* Search and filters */}
             <div className="flex flex-col gap-3 sm:flex-row">
               <div className="relative min-w-0 flex-1">
                 <PiMagnifyingGlass className="absolute left-3 top-1/2 size-4 -translate-y-1/2 text-muted-foreground" />
-
                 <input
                   value={search}
                   onChange={(event) => setSearch(event.target.value)}
@@ -449,8 +407,20 @@ export default function TasksPage() {
             </div>
           </div>
 
-          {/* List view */}
-          {view === "List" && (
+          {isLoading ? (
+            <p className="px-5 py-12 text-center text-sm text-muted-foreground">
+              Loading your tasks...
+            </p>
+          ) : isError ? (
+            <div className="px-5 py-12 text-center">
+              <p className="text-sm text-destructive">
+                Could not load your tasks.
+              </p>
+              <p className="mt-1 text-xs text-muted-foreground">
+                Please refresh and try again.
+              </p>
+            </div>
+          ) : view === "List" ? (
             <div className="space-y-3 p-4 sm:p-5">
               {filteredTasks.map((task) => (
                 <TaskCard key={task.id} task={task} />
@@ -463,7 +433,6 @@ export default function TasksPage() {
                   <p className="mt-1 text-sm text-muted-foreground">
                     Try another search or create a new task.
                   </p>
-
                   <Button
                     variant="outline"
                     className="mt-4"
@@ -478,10 +447,7 @@ export default function TasksPage() {
                 </div>
               )}
             </div>
-          )}
-
-          {/* Board view */}
-          {view === "Board" && (
+          ) : (
             <div className="grid grid-cols-1 gap-4 p-4 md:grid-cols-3 sm:p-5">
               {statuses.map((status) => {
                 const columnTasks = filteredTasks.filter(
@@ -504,11 +470,11 @@ export default function TasksPage() {
                                 : "bg-muted-foreground/50"
                           }`}
                         />
-
-                        <h3 className="text-sm text-neutral-900 font-semibold">{status}</h3>
+                        <h3 className="text-sm font-semibold text-neutral-900">
+                          {status}
+                        </h3>
                       </div>
-
-                      <span className="rounded-full bg-background flex items-center h-6 w-6 px-2 py-1 text-[13px] text-muted-foreground">
+                      <span className="flex h-6 w-6 items-center justify-center rounded-full bg-background text-[13px] text-muted-foreground">
                         {columnTasks.length}
                       </span>
                     </div>
@@ -527,10 +493,8 @@ export default function TasksPage() {
 
                     <button
                       type="button"
-                      onClick={() => {
-                        setShowCreateForm(true);
-                      }}
-                      className="mt-3 flex w-full items-center justify-center gap-2 rounded-lg border border-dashed border-border py-2.5 text-xs text-neutral-700 transition hover:border-primary hover:text-foreground cursor-pointer"
+                      onClick={() => setShowCreateForm(true)}
+                      className="mt-3 flex w-full cursor-pointer items-center justify-center gap-2 rounded-lg border border-dashed border-border py-2.5 text-xs text-neutral-700 transition hover:border-primary hover:text-foreground"
                     >
                       <PiPlus className="size-3.5" />
                       Add task
@@ -542,7 +506,6 @@ export default function TasksPage() {
           )}
         </section>
 
-        {/* Create task dialog */}
         {showCreateForm && (
           <div
             className="fixed inset-0 z-50 flex items-center justify-center overflow-y-auto bg-black/40 p-4 backdrop-blur-[2px]"
@@ -560,22 +523,18 @@ export default function TasksPage() {
             >
               <div className="mb-5 flex items-start justify-between gap-3">
                 <div>
-                  <h2
-                    id="create-task-title"
-                    className="text-lg font-semibold"
-                  >
+                  <h2 id="create-task-title" className="text-lg font-semibold">
                     Create a task
                   </h2>
                   <p className="mt-1 text-sm text-muted-foreground">
                     Add a task to your workspace.
                   </p>
                 </div>
-
                 <button
                   type="button"
                   aria-label="Close form"
                   onClick={() => setShowCreateForm(false)}
-                  className="rounded-md p-2 text-muted-foreground hover:bg-muted hover:text-foreground cursor-pointer"
+                  className="cursor-pointer rounded-md p-2 text-muted-foreground hover:bg-muted hover:text-foreground"
                 >
                   <PiX className="size-4" />
                 </button>
@@ -583,13 +542,9 @@ export default function TasksPage() {
 
               <form onSubmit={createTask} className="space-y-4">
                 <div className="space-y-1.5">
-                  <label
-                    htmlFor="task-title"
-                    className="text-xs font-medium"
-                  >
+                  <label htmlFor="task-title" className="text-xs font-medium">
                     Task title
                   </label>
-
                   <input
                     id="task-title"
                     autoFocus
@@ -608,13 +563,10 @@ export default function TasksPage() {
                   >
                     Description
                   </label>
-
                   <textarea
                     id="task-description"
                     value={newDescription}
-                    onChange={(event) =>
-                      setNewDescription(event.target.value)
-                    }
+                    onChange={(event) => setNewDescription(event.target.value)}
                     placeholder="Add a few details..."
                     rows={3}
                     className="w-full resize-y rounded-lg border border-input bg-background px-3 py-2.5 text-sm outline-none placeholder:text-muted-foreground focus:border-ring focus:ring-2 focus:ring-ring/20"
@@ -629,7 +581,6 @@ export default function TasksPage() {
                     >
                       Priority
                     </label>
-
                     <select
                       id="task-priority"
                       value={newPriority}
@@ -651,7 +602,6 @@ export default function TasksPage() {
                     >
                       Due date
                     </label>
-
                     <input
                       id="task-due-date"
                       type="date"
@@ -669,7 +619,6 @@ export default function TasksPage() {
                   >
                     Category
                   </label>
-
                   <input
                     id="task-category"
                     value={newCategory}
@@ -688,10 +637,13 @@ export default function TasksPage() {
                   >
                     Cancel
                   </Button>
-
-                  <Button type="submit" className="gap-2 cursor-pointer">
+                  <Button
+                    type="submit"
+                    disabled={createTaskMutation.isPending}
+                    className="cursor-pointer gap-2"
+                  >
                     <PiPlus className="size-4" />
-                    Create task
+                    {createTaskMutation.isPending ? "Creating..." : "Create task"}
                   </Button>
                 </div>
               </form>

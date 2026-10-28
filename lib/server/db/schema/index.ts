@@ -240,6 +240,9 @@ export const authSessions = pgTable(
       userId: text("user_id")
         .notNull()
         .references(() => users.id, { onDelete: "cascade" }),
+        taskId: uuid("task_id").references(() => tasks.id, {
+          onDelete: "cascade",
+        }),
       name: varchar("name", { length: 200 }).notNull(),
       type: reminderRuleTypeEnum("type").notNull(),
       config: jsonb("config")
@@ -411,7 +414,30 @@ updatedAt: timestamp("updated_at", {
       title: varchar("title", { length: 250 }).notNull(),
       description: text("description"),
       completed: boolean("completed").notNull().default(false),
+      status: varchar("status", { length: 20 })
+  .notNull()
+  .default("To Do"),
       dueAt: timestamp("due_at", { withTimezone: true }),
+      priority: varchar("priority", { length: 20 })
+  .notNull()
+  .default("Medium"),
+
+category: varchar("category", { length: 100 })
+  .notNull()
+  .default("General"),
+
+reminderEnabled: boolean("reminder_enabled")
+  .notNull()
+  .default(false),
+
+reminderAt: timestamp("reminder_at", {
+  withTimezone: true,
+}),
+
+reminderChannelIds: jsonb("reminder_channel_ids")
+  .$type<string[]>()
+  .notNull()
+  .default([]),
       createdAt: timestamp("created_at", { withTimezone: true })
         .notNull()
         .defaultNow(),
