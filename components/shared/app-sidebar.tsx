@@ -18,7 +18,7 @@ import {
   PiNotebook,
   PiNoteFill,
   PiPaletteBold,
-  PiPlugsConnectedBold,
+  PiBell,
   PiPlus,
   PiPlusCircleBold,
   PiShareBold,
@@ -71,6 +71,11 @@ const navMain = [
         title: "Goals",
         url: "/goals",
         icon: PiFlag,
+      },
+      {
+        title: "Reminders",
+        url: "/reminders",
+        icon: PiBell,
       },
 
     ],
