@@ -327,18 +327,18 @@ export default function RemindersPage() {
       <header>
        
 
-        <h1 className="mt-2 text-3xl font-bold tracking-tight">
+        <h1 className="text-xl font-semibold tracking-tight sm:text-2xl">
           Reminder settings
         </h1>
 
-        <p className="mt-2 max-w-2xl text-sm text-muted-foreground">
+        <p className="mt-2 max-w-2xl text-sm leading-6 text-muted-foreground">
           Set rules for when you want to be reminded about your work,
           inactivity, and upcoming deadlines.
         </p>
       </header>
 
       <div className="grid gap-6 lg:grid-cols-[minmax(0,1fr)_minmax(0,1fr)]">
-        <section className="rounded-xl border border-border bg-card p-5 md:p-6">
+        <section className="rounded-xl border border-border bg-neutral-100 p-5 md:p-6">
           <div className="mb-6">
             <h2 className="text-lg font-semibold">
               Create a reminder
@@ -622,7 +622,7 @@ export default function RemindersPage() {
           </form>
         </section>
 
-        <section className="rounded-xl border border-border bg-card p-5 md:p-6">
+        <section className="rounded-xl border border-border bg-neutral-100 p-5 md:p-6">
           <div className="mb-6 flex items-start justify-between gap-3">
             <div>
               <h2 className="text-lg font-semibold">
