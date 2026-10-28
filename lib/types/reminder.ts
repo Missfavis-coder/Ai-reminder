@@ -54,4 +54,5 @@ export interface ReminderRuleResponse {
 export interface CreateReminderRuleInput {
   name: string;
   config: ReminderRuleConfig;
+  channelIds: string[];
 }

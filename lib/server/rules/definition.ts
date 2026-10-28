@@ -7,21 +7,25 @@ const activeWorkConfig = z.object({
   thresholdSeconds: durationSchema,
   workspaceId: z.string().uuid().optional(),
   repeat: z.boolean().default(false),
+  channelIds: z.array(z.string().uuid()).optional(),
 });
 
 const inactivityConfig = z.object({
   thresholdSeconds: durationSchema,
   workspaceId: z.string().uuid().optional(),
   repeat: z.boolean().default(false),
+  channelIds: z.array(z.string().uuid()).optional(),
 });
 
 const deadlineConfig = z.object({
   deadlineAt: z.string().datetime(),
   leadTimeSeconds: durationSchema,
+  channelIds: z.array(z.string().uuid()).optional(),
 });
 
 const fixedTimeConfig = z.object({
   scheduledAt: z.string().datetime(),
+  channelIds: z.array(z.string().uuid()).optional(),
 });
 
 export const reminderRuleConfigSchema = z.discriminatedUnion("type", [
