@@ -3,7 +3,7 @@ export const USER_MENU = {
     accountHref: "/account",
     accountkeysHref: "/account/api-keys",
     pricingHref: "/pricing",
-    signInHref: "/api/auth/login",
+    signInHref: "/login",
     portalErrorMessage: "Could not open billing portal. Try again.",
     portalNetworkErrorMessage: "Network error opening billing portal.",
   } as const;

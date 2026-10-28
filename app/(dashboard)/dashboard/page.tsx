@@ -1,7 +1,6 @@
-
 "use client";
 
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import {
   PiCaretLeft,
   PiCaretRight,
@@ -16,37 +15,64 @@ import {
 } from "react-icons/pi";
 
 import { Button } from "@/components/ui/button";
-
-const initialTasks = [
-  { id: 1, title: "Call Linda before vacation", done: false },
-  { id: 2, title: "Finish the sales presentation for the client", done: false },
-  { id: 3, title: "Send follow-up emails", done: true },
-  { id: 4, title: "Review analytics report", done: false },
-  { id: 5, title: "Take 10-minute break", done: true },
-];
-
-const assignedTasks = [
-  { title: "New ideas for campaign", progress: 60, color: "#fb6544" },
-  { title: "Change button", progress: 27, color: "#e4b800" },
-  { title: "New BrandBook", progress: 95, color: "#e4b800" },
-  { title: "Wireframe for List", progress: 78, color: "#23bf80" },
-  { title: "Design PPT #4", progress: 92, color: "#e4b800" },
-];
+import {
+  useCreateTask,
+  useTasks,
+  useUpdateTask,
+} from "@/lib/hooks/use-tasks";
 
 export default function HomePage() {
-  const [tasks, setTasks] = useState(initialTasks);
   const [timerRunning, setTimerRunning] = useState(true);
   const [activeTab, setActiveTab] = useState("Upcoming");
+  const [newTaskTitle, setNewTaskTitle] = useState("");
+  const [showTaskInput, setShowTaskInput] = useState(false);
+  const [currentDate, setCurrentDate] = useState("");
 
-  const completedTasks = tasks.filter((task) => task.done).length;
-
-  const visibleTasks = assignedTasks.filter((task) =>
-    activeTab === "Completed"
-      ? task.progress === 100
-      : activeTab === "Overdue"
-        ? task.progress < 30
-        : task.progress >= 30
+useEffect(() => {
+  setCurrentDate(
+    new Date().toLocaleDateString("en-US", {
+      weekday: "long",
+      month: "long",
+      day: "numeric",
+    })
   );
+}, []);
+
+  const {
+    data: tasks = [],
+    isPending: tasksLoading,
+    isError: tasksError,
+  } = useTasks();
+
+  const createTask = useCreateTask();
+  const updateTask = useUpdateTask();
+
+  const completedTasks = tasks.filter((task) => task.completed).length;
+
+  const visibleTasks = tasks.filter((task) =>
+    activeTab === "Completed"
+      ? task.completed
+      : activeTab === "Overdue"
+        ? !task.completed &&
+          task.dueAt !== null &&
+          new Date(task.dueAt).getTime() < Date.now()
+        : !task.completed &&
+          (!task.dueAt || new Date(task.dueAt).getTime() >= Date.now()),
+  );
+
+  async function handleCreateTask() {
+    const title = newTaskTitle.trim();
+
+    if (!title || createTask.isPending) return;
+
+    try {
+      await createTask.mutateAsync({ title });
+      setNewTaskTitle("");
+      setShowTaskInput(false);
+    } catch {
+      // The mutation error is displayed below the form.
+    }
+  }
 
   return (
     <main className="min-h-screen bg-white px-4 py-6 text-[#24251f] sm:px-6 lg:px-8">
@@ -55,7 +81,7 @@ export default function HomePage() {
         <section className="flex flex-wrap items-center justify-between gap-4">
           <div>
             <p className="mb-1 text-sm text-neutral-400">
-              Monday, September 30
+            {currentDate}
             </p>
 
             <h1 className="text-2xl font-normal tracking-tight sm:text-3xl">
@@ -75,7 +101,7 @@ export default function HomePage() {
         {/* Main dashboard grid */}
         <section className="grid grid-cols-1 items-start gap-4 xl:grid-cols-12">
           {/* Left column: To-do list and timer */}
-          <div className="grid min-w-0 grid-cols-1  gap-4 sm:grid-cols-2 xl:col-span-7">
+          <div className="grid min-w-0 grid-cols-1 gap-4 sm:grid-cols-2 xl:col-span-7">
             {/* To-do list */}
             <div className="min-w-0 rounded-2xl bg-neutral-100 p-4 shadow-xs">
               <div className="mb-4 flex items-center justify-between gap-2">
@@ -87,6 +113,7 @@ export default function HomePage() {
                 <button
                   type="button"
                   aria-label="Task options"
+                  onClick={() => setShowTaskInput((value) => !value)}
                   className="rounded-md p-1 text-primary font-bold hover:bg-[#f5f5f0]"
                 >
                   <PiDotsThreeVertical className="size-5" />
@@ -95,57 +122,108 @@ export default function HomePage() {
 
               <div className="mb-3 h-px bg-neutral-100" />
 
-              <div className="space-y-4">
-                {tasks.map((task) => (
-                  <div
-                    key={task.id}
-                    className="flex items-start gap-2.5 text-sm leading-5"
+              {showTaskInput && (
+                <form
+                  className="mb-4 flex gap-2"
+                  onSubmit={(event) => {
+                    event.preventDefault();
+                    void handleCreateTask();
+                  }}
+                >
+                  <input
+                    value={newTaskTitle}
+                    onChange={(event) => setNewTaskTitle(event.target.value)}
+                    placeholder="What do you need to do?"
+                    maxLength={250}
+                    className="min-w-0 flex-1 rounded-lg border border-neutral-300 bg-white px-3 py-2 text-sm outline-none focus:border-[#838c08]"
+                  />
+
+                  <Button
+                    type="submit"
+                    disabled={!newTaskTitle.trim() || createTask.isPending}
+                    className="bg-[#838c08] text-white hover:bg-[#707807]"
                   >
-                    <button
-                      type="button"
-                      aria-label={
-                        task.done
-                          ? `Mark ${task.title} incomplete`
-                          : `Complete ${task.title}`
-                      }
-                      onClick={() =>
-                        setTasks((current) =>
-                          current.map((item) =>
-                            item.id === task.id
-                              ? { ...item, done: !item.done }
-                              : item
-                          )
-                        )
-                      }
-                      className={`mt-0.5 flex size-3.5 shrink-0 items-center justify-center rounded-[3px] border ${
-                        task.done
-                          ? "border-[#838c08] bg-[#838c08] text-white"
-                          : "border-[#d5d6cf] bg-white"
-                      }`}
-                    >
-                      {task.done && <PiCheck className="size-3" />}
-                    </button>
+                    <PiPlus className="size-4" />
+                  </Button>
+                </form>
+              )}
 
-                    <span
-                      className={
-                        task.done
-                          ? "text-[#838c08] line-through"
-                          : "text-neutral-600"
-                      }
-                    >
-                      {task.title}
-                    </span>
-                  </div>
-                ))}
-              </div>
+              {createTask.isError && (
+                <p className="mb-3 text-xs text-red-600">
+                  Could not create the task. Please try again.
+                </p>
+              )}
 
+              {tasksLoading ? (
+                <p className="py-6 text-center text-sm text-neutral-500">
+                  Loading your tasks...
+                </p>
+              ) : tasksError ? (
+                <p className="py-6 text-center text-sm text-red-600">
+                  Could not load tasks. Please refresh and try again.
+                </p>
+              ) : (
+                <div className="space-y-4">
+                  {tasks.slice(0, 5).map((task) => (
+                    <div
+                      key={task.id}
+                      className="flex items-start gap-2.5 text-sm leading-5"
+                    >
+                      <button
+                        type="button"
+                        aria-label={
+                          task.completed
+                            ? `Mark ${task.title} incomplete`
+                            : `Complete ${task.title}`
+                        }
+                        disabled={updateTask.isPending}
+                        onClick={() =>
+                          updateTask.mutate({
+                            id: task.id,
+                            input: { completed: !task.completed },
+                          })
+                        }
+                        className={`mt-0.5 flex size-3.5 shrink-0 items-center justify-center rounded-[3px] border ${
+                          task.completed
+                            ? "border-[#838c08] bg-[#838c08] text-white"
+                            : "border-[#d5d6cf] bg-white"
+                        }`}
+                      >
+                        {task.completed && <PiCheck className="size-3" />}
+                      </button>
+
+                      <span
+                        className={
+                          task.completed
+                            ? "text-[#838c08] line-through"
+                            : "text-neutral-600"
+                        }
+                      >
+                        {task.title}
+                      </span>
+                    </div>
+                  ))}
+
+                  {tasks.length === 0 && (
+                    <p className="py-6 text-center text-sm text-neutral-500">
+                      No tasks yet. Add your first task.
+                    </p>
+                  )}
+                </div>
+              )}
+
+              {updateTask.isError && (
+                <p className="mt-3 text-xs text-red-600">
+                  Could not update the task. Please try again.
+                </p>
+              )}
             </div>
 
-            {/* Time tracker */}
-            <div className="relative flex min-h-[300px] min-w-0 flex-col overflow-hidden rounded-2xl bg-[#e8f811]  p-4 text-neutral-700 sm:min-h-[315px]">
+            {/* Time tracker — existing design preserved */}
+            <div className="relative flex min-h-[300px] min-w-0 flex-col overflow-hidden rounded-2xl bg-[#e8f811] p-4 text-neutral-700 sm:min-h-[315px]">
               <div className="pointer-events-none absolute -right-12 -top-16 size-64 rounded-full bg-[#838c08]" />
 
-              <div className="pointer-events-none absolute -bottom-28 -left-16 size-80 rounded-full bg-[#e2f11a] shadow-xs " />
+              <div className="pointer-events-none absolute -bottom-28 -left-16 size-80 rounded-full bg-[#e2f11a] shadow-xs" />
 
               <div className="relative z-10 flex items-center justify-between gap-2">
                 <h2 className="text-sm font-semibold">Time tracker</h2>
@@ -165,7 +243,9 @@ export default function HomePage() {
                 </p>
 
                 <p className="mt-3 text-center text-[11px] text-neutral-800">
-                  {timerRunning ? "Focus session in progress" : "Timer paused"}
+                  {timerRunning
+                    ? "Focus session in progress"
+                    : "Timer paused"}
                 </p>
               </div>
 
@@ -235,7 +315,7 @@ export default function HomePage() {
                       Tasks completed
                     </p>
                     <p className="text-2xl font-light">
-                      {completedTasks + 6}/12
+                      {completedTasks}/{tasks.length}
                     </p>
                   </div>
 
@@ -248,7 +328,7 @@ export default function HomePage() {
                   </div>
                 </div>
 
-                {/* Circular activity indicators */}
+                {/* Circular activity indicators — existing design preserved */}
                 <div className="flex items-center justify-center py-2">
                   <div className="relative size-36 sm:size-40">
                     <div
@@ -301,8 +381,8 @@ export default function HomePage() {
 
         {/* Bottom row: Reminder and Assigned Tasks */}
         <section className="grid grid-cols-1 items-start gap-4 md:grid-cols-2">
-          {/* Meeting reminder */}
-          <div className="w-full min-w-0 rounded-2xl bg-neutral-100 p-4 ">
+          {/* Meeting reminder — existing design preserved */}
+          <div className="w-full min-w-0 rounded-2xl bg-neutral-100 p-4">
             <div className="mb-4 flex items-center justify-between">
               <h2 className="text-[15px] font-semibold">Reminder</h2>
 
@@ -369,7 +449,7 @@ export default function HomePage() {
             </div>
           </div>
 
-          {/* Assigned tasks */}
+          {/* Assigned tasks — now backed by the tasks API */}
           <div className="w-full min-w-0 rounded-2xl bg-neutral-100 p-4 shadow-[0_2px_8px_rgba(0,0,0,0.025)] sm:p-5">
             <div className="mb-4 flex items-center justify-between">
               <h2 className="text-[15px] font-semibold text-neutral-700">
@@ -379,6 +459,7 @@ export default function HomePage() {
               <button
                 type="button"
                 aria-label="Add assigned task"
+                onClick={() => setShowTaskInput(true)}
                 className="rounded-full border border-[#e8e8e1] p-1.5 hover:bg-[#f5f5f0] cursor-pointer"
               >
                 <PiPlus className="size-3.5" />
@@ -403,54 +484,82 @@ export default function HomePage() {
             </div>
 
             <div className="space-y-1">
-              {visibleTasks.map((task, index) => (
-                <div
-                  key={task.title}
-                  className="flex items-center gap-3 rounded-lg px-3 py-3 transition hover:bg-primary/10 cursor-pointer"
-                >
-                  <div
-                    className="flex size-5 shrink-0 items-center justify-center rounded-[5px] text-[10px] font-semibold text-white"
-                    style={{ backgroundColor: task.color }}
-                  >
-                    {index + 1}
-                  </div>
-
-                  <p className="min-w-0 flex-1 truncate text-[13px] text-neutral-600">
-                    {task.title}
-                  </p>
-
-                  <div className="hidden w-1/3 max-w-36 items-center gap-2 sm:flex">
-                    <div className="h-1.5 flex-1 overflow-hidden rounded-full bg-neutral-300">
-                      <div
-                        className="h-full rounded-full bg-[#838c08]"
-                        style={{ width: `${task.progress}%` }}
-                      />
-                    </div>
-
-                    <span className="w-8 text-right text-[10px] text-[#66675f]">
-                      {task.progress}%
-                    </span>
-                  </div>
-
-                  <div className="flex shrink-0 -space-x-2">
-                    {[0, 1]
-                      .slice(0, index % 2 === 0 ? 2 : 1)
-                      .map((n) => (
-                        <div
-                          key={n}
-                          className="flex size-6 items-center justify-center rounded-full border border-[#fdfeec] bg-[#fdfeec] text-[8px] font-semibold text-neutral-700"
-                        >
-                          {n === 0 ? "A" : "M"}
-                        </div>
-                      ))}
-                  </div>
-                </div>
-              ))}
-
-              {visibleTasks.length === 0 && (
+              {tasksLoading ? (
                 <p className="py-6 text-center text-xs text-[#92938a]">
-                  No tasks in this section yet.
+                  Loading tasks...
                 </p>
+              ) : tasksError ? (
+                <p className="py-6 text-center text-xs text-red-600">
+                  Could not load tasks.
+                </p>
+              ) : (
+                <>
+                  {visibleTasks.map((task, index) => (
+                    <div
+                      key={task.id}
+                      className="flex items-center gap-3 rounded-lg px-3 py-3 transition hover:bg-primary/10 cursor-pointer"
+                    >
+                      <div
+                        className="flex size-5 shrink-0 items-center justify-center rounded-[5px] text-[10px] font-semibold text-white"
+                        style={{
+                          backgroundColor: task.completed
+                            ? "#23bf80"
+                            : "#fb6544",
+                        }}
+                      >
+                        {task.completed ? (
+                          <PiCheck className="size-3" />
+                        ) : (
+                          index + 1
+                        )}
+                      </div>
+
+                      <p
+                        className={`min-w-0 flex-1 truncate text-[13px] ${
+                          task.completed
+                            ? "text-neutral-400 line-through"
+                            : "text-neutral-600"
+                        }`}
+                      >
+                        {task.title}
+                      </p>
+
+                      <div className="hidden w-1/3 max-w-36 items-center gap-2 sm:flex">
+                        <div className="h-1.5 flex-1 overflow-hidden rounded-full bg-neutral-300">
+                          <div
+                            className="h-full rounded-full bg-[#838c08]"
+                            style={{
+                              width: `${task.completed ? 100 : 0}%`,
+                            }}
+                          />
+                        </div>
+
+                        <span className="w-8 text-right text-[10px] text-[#66675f]">
+                          {task.completed ? 100 : 0}%
+                        </span>
+                      </div>
+
+                      <div className="flex shrink-0 -space-x-2">
+                        {[0, 1]
+                          .slice(0, index % 2 === 0 ? 2 : 1)
+                          .map((n) => (
+                            <div
+                              key={n}
+                              className="flex size-6 items-center justify-center rounded-full border border-[#fdfeec] bg-[#fdfeec] text-[8px] font-semibold text-neutral-700"
+                            >
+                              {n === 0 ? "A" : "M"}
+                            </div>
+                          ))}
+                      </div>
+                    </div>
+                  ))}
+
+                  {visibleTasks.length === 0 && (
+                    <p className="py-6 text-center text-xs text-[#92938a]">
+                      No tasks in this section yet.
+                    </p>
+                  )}
+                </>
               )}
             </div>
           </div>

@@ -1,17 +1,15 @@
-
 import { randomUUID } from "node:crypto";
 import { NextRequest, NextResponse } from "next/server";
 import { hash } from "bcryptjs";
 import { z } from "zod";
+import { eq } from "drizzle-orm";
 
 import { db } from "@/lib/server/db";
 import { users } from "@/lib/server/db/schema";
 import { createSession } from "@/lib/server/auth/session";
-import { eq } from "drizzle-orm";
-
-
 
 const registerSchema = z.object({
+  name: z.string().trim().min(2).max(100),
   email: z.string().trim().email().max(254),
   password: z.string().min(12).max(128),
 });
@@ -41,12 +39,14 @@ export async function POST(request: NextRequest) {
   if (!parsed.success) {
     return NextResponse.json(
       {
-        error: "Please provide a valid email and a password of at least 12 characters.",
+        error:
+          "Please provide a valid name, email, and a password of at least 12 characters.",
       },
       { status: 400 },
     );
   }
 
+  const name = parsed.data.name;
   const email = parsed.data.email.toLowerCase();
   const passwordHash = await hash(parsed.data.password, 12);
 
@@ -68,11 +68,13 @@ export async function POST(request: NextRequest) {
       .insert(users)
       .values({
         id: randomUUID(),
+        name,
         email,
         passwordHash,
       })
       .returning({
         id: users.id,
+        name: users.name,
         email: users.email,
       });
 
@@ -87,6 +89,7 @@ export async function POST(request: NextRequest) {
         message: "Account created successfully.",
         user: {
           id: user.id,
+          name: user.name,
           email: user.email,
         },
       },
@@ -100,7 +103,7 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    console.error("Registration failed.");
+    console.error("Registration failed.", error);
 
     return NextResponse.json(
       { error: "Unable to create your account right now." },

@@ -76,6 +76,7 @@ import {
   
   export const users = pgTable("users", {
     id: text("id").primaryKey(),
+    name: varchar("name", { length: 100 }).notNull(),
     passwordHash: text("password_hash").notNull(),
     email: varchar("email", { length: 320 }).notNull().unique(),
     timezone: varchar("timezone", { length: 100 })
@@ -397,6 +398,30 @@ updatedAt: timestamp("updated_at", {
       index("whatsapp_webhook_events_message_idx").on(
         table.providerMessageId,
       ),
+    ],
+  );
+
+  export const tasks = pgTable(
+    "tasks",
+    {
+      id: uuid("id").defaultRandom().primaryKey(),
+      userId: text("user_id")
+        .notNull()
+        .references(() => users.id, { onDelete: "cascade" }),
+      title: varchar("title", { length: 250 }).notNull(),
+      description: text("description"),
+      completed: boolean("completed").notNull().default(false),
+      dueAt: timestamp("due_at", { withTimezone: true }),
+      createdAt: timestamp("created_at", { withTimezone: true })
+        .notNull()
+        .defaultNow(),
+      updatedAt: timestamp("updated_at", { withTimezone: true })
+        .notNull()
+        .defaultNow(),
+    },
+    (table) => [
+      index("tasks_user_id_idx").on(table.userId),
+      index("tasks_user_completed_idx").on(table.userId, table.completed),
     ],
   );
   

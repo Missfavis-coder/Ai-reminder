@@ -27,9 +27,17 @@ import {
 } from "../ui/dropdown-menu";
 import { USER_MENU } from "@/lib/constants/user-menu";
 
+type UserMenuProps = {
+  user: {
+    id: string;
+    email: string;
+    displayName: string;
+    avatarUrl: string | null;
+    hasBilling: boolean;
+  };
+};
 
-
-export function UserMenu({ user }) {
+export function UserMenu({ user }: UserMenuProps) {
   const router = useRouter();
   const [signingOut, setSigningOut] = useState(false);
   const [openingPortal, setOpeningPortal] = useState(false);
@@ -85,22 +93,22 @@ export function UserMenu({ user }) {
   const initials = getInitials(user.displayName);
 
   return (
-    <DropdownMenu>
-      <DropdownMenuTrigger asChild>
-        <Button
-          variant="ghost"
-          size="icon"
-          aria-label={`Open menu for ${user.displayName}`}
-          className="overflow-hidden rounded-full p-0"
-        >
-          <Avatar className="size-9">
-            {user.avatarUrl ? (
-              <AvatarImage src={user.avatarUrl} alt={user.displayName} />
-            ) : null}
-            <AvatarFallback>{initials}</AvatarFallback>
-          </Avatar>
-        </Button>
-      </DropdownMenuTrigger>
+    <DropdownMenu >
+     <DropdownMenuTrigger>
+  <Button
+    variant="ghost"
+    size="icon"
+    aria-label={`Open menu for ${user.displayName}`}
+    className="overflow-hidden rounded-full p-0"
+  >
+    <Avatar className="size-9">
+      {user.avatarUrl ? (
+        <AvatarImage src={user.avatarUrl} alt={user.displayName} />
+      ) : null}
+      <AvatarFallback>{initials}</AvatarFallback>
+    </Avatar>
+  </Button>
+</DropdownMenuTrigger>
       <DropdownMenuContent align="end" sideOffset={8} className="w-56">
         <DropdownMenuLabel className="flex flex-col gap-0.5">
           <span className="truncate text-sm font-medium text-foreground">
@@ -111,14 +119,14 @@ export function UserMenu({ user }) {
           </span>
         </DropdownMenuLabel>
         <DropdownMenuSeparator />
-        <DropdownMenuItem asChild className="cursor-pointer">
-          <Link href={USER_MENU.dashboardHref}>
+        <DropdownMenuItem  className="cursor-pointer">
+          <Link href={USER_MENU.dashboardHref} className="flex items-center gap-2">
             <PiSquaresFour className="size-4" />
             Dashboard
           </Link>
         </DropdownMenuItem>
-        <DropdownMenuItem asChild className="cursor-pointer">
-          <Link href={USER_MENU.accountHref}>
+        <DropdownMenuItem className="cursor-pointer">
+          <Link href={USER_MENU.accountHref} className="flex items-center gap-2">
             <PiUserCircle className="size-4" />
             Account
           </Link>

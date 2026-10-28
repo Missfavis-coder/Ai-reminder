@@ -1,4 +1,3 @@
-
 import { NextRequest, NextResponse } from "next/server";
 import { compare } from "bcryptjs";
 import { eq } from "drizzle-orm";
@@ -7,8 +6,6 @@ import { z } from "zod";
 import { db } from "@/lib/server/db";
 import { users } from "@/lib/server/db/schema";
 import { createSession } from "@/lib/server/auth/session";
-
-
 
 const loginSchema = z.object({
   email: z.string().trim().email().max(254),
@@ -52,8 +49,11 @@ export async function POST(request: NextRequest) {
 
     if (!user) {
       return NextResponse.json(
-        { error: "Invalid email or password." },
-        { status: 401 },
+        {
+          error: "No account found with this email. Please register first.",
+          code: "USER_NOT_FOUND",
+        },
+        { status: 404 },
       );
     }
 
@@ -78,8 +78,8 @@ export async function POST(request: NextRequest) {
         email: user.email,
       },
     });
-  } catch {
-    console.error("Login failed.");
+  } catch (error) {
+    console.error("Login failed.", error);
 
     return NextResponse.json(
       { error: "Unable to log in right now." },

@@ -50,6 +50,20 @@
       "when": 1792717533707,
       "tag": "0006_improve_whatsapp_webhook_retries",
       "breakpoints": true
+    },
+    {
+      "idx": 7,
+      "version": "7",
+      "when": 1793181613531,
+      "tag": "0007_spicy_madame_masque",
+      "breakpoints": true
+    },
+    {
+      "idx": 8,
+      "version": "7",
+      "when": 1793196225682,
+      "tag": "0008_yellow_amphibian",
+      "breakpoints": true
     }
   ]
 }

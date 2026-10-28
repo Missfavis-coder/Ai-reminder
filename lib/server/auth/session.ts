@@ -61,16 +61,17 @@ export async function getCurrentUserId(): Promise<string | null> {
       .limit(1);
 
     return session?.userId ?? null;
-    } catch (error) {
-    const cause =
-      error instanceof Error ? error.cause : undefined;
-
-    console.error("Authentication session lookup failed.", {
-      message: error instanceof Error ? error.message : String(error),
-      cause:
-        cause instanceof AggregateError
-          ? cause.errors.map((item) => ({
-              name: item instanceof Error ? item.name : "UnknownError",
+       } catch (error) {
+      console.error("Authentication session lookup failed:", error);
+  
+      if (error instanceof Error) {
+        console.error("Database error message:", error.message);
+        console.error("Database error cause:", error.cause);
+  
+        if (error.cause instanceof AggregateError) {
+          console.error(
+            "Underlying connection errors:",
+            error.cause.errors.map((item) => ({
               message: item instanceof Error ? item.message : String(item),
               code:
                 typeof item === "object" &&
@@ -78,17 +79,15 @@ export async function getCurrentUserId(): Promise<string | null> {
                 "code" in item
                   ? item.code
                   : undefined,
-            }))
-          : cause instanceof Error
-            ? {
-                name: cause.name,
-                message: cause.message,
-              }
-            : cause,
-    });
+            })),
+          );
+        }
+      }
+  
+      throw error;
+    }
 
-    throw error;
-  }
+
 }
 
 export async function destroySession() {
