@@ -1,5 +1,5 @@
 
-
+import { Suspense } from "react";
 import { PropsWithChildren } from "react";
 import { SidebarInset, SidebarProvider } from "@/components/ui/sidebar";
 import { AppSidebar } from "@/components/shared/app-sidebar";
@@ -13,7 +13,9 @@ export default function Applayout({ children }: PropsWithChildren) {
       <SidebarProvider className="">
         <AppSidebar variant="sidebar" />
         <SidebarInset className=" flex flex-col overflow-hidden">
-          <SiteHeader/>
+        <Suspense fallback={<div className="h-14 border-b border-border" />}>
+  <SiteHeader />
+</Suspense>
           <main className="flex-1 overflow-y-auto overflow-x-hidden bg-background">
             {children}
           </main>

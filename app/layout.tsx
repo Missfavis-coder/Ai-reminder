@@ -35,6 +35,7 @@ export default function RootLayout({ children }: Readonly<{ children: React.Reac
   return (
     <html
       lang="en"
+      data-scroll-behavior="smooth"
       className={`${inter.variable}  ${instrumentSerif.variable} dark`}
       suppressHydrationWarning
     >
