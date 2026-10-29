@@ -1,3 +1,4 @@
+
 "use client";
 
 import { useMemo, useState } from "react";
@@ -16,6 +17,7 @@ import {
   PiEnvelopeSimple,
   PiInstagramLogo,
   PiPhoneCall,
+  PiArrowLeft,
 } from "react-icons/pi";
 import { toast } from "sonner";
 import { z } from "zod";
@@ -23,8 +25,9 @@ import { z } from "zod";
 import { Button } from "@/components/ui/button";
 import {
   useNotificationChannels,
-  useSaveNotificationChannel,
   useUpdateNotificationChannel,
+  useRequestWhatsAppVerification,
+  useVerifyWhatsApp,
 } from "@/lib/hooks/use-notification-channels";
 import {
   useCreateWorkspace,
@@ -39,12 +42,18 @@ const phoneSchema = z
     "Enter a valid international number, e.g. +2348012345678.",
   );
 
+const codeSchema = z
+  .string()
+  .trim()
+  .regex(/^\d{6}$/, "Enter the six-digit verification code.");
+
 const workspaceSchema = z.object({
   provider: z.enum(["browser", "vscode"]),
   name: z.string().trim().min(1, "Enter a workspace name.").max(200),
 });
 
 type Provider = "browser" | "vscode";
+type WhatsAppStep = "details" | "verification";
 
 const channelOptions = [
   {
@@ -89,15 +98,20 @@ export default function IntegrationsPage() {
   const [search, setSearch] = useState("");
   const [provider, setProvider] = useState<Provider>("vscode");
   const [workspaceName, setWorkspaceName] = useState("");
+
   const [phoneNumber, setPhoneNumber] = useState("");
+  const [verificationCode, setVerificationCode] = useState("");
   const [consent, setConsent] = useState(false);
   const [showWhatsAppForm, setShowWhatsAppForm] = useState(false);
+  const [whatsAppStep, setWhatsAppStep] =
+    useState<WhatsAppStep>("details");
 
   const channelsQuery = useNotificationChannels();
   const workspacesQuery = useWorkspaces();
   const createWorkspace = useCreateWorkspace();
-  const saveChannel = useSaveNotificationChannel();
   const updateChannel = useUpdateNotificationChannel();
+  const requestVerification = useRequestWhatsAppVerification();
+  const verifyWhatsApp = useVerifyWhatsApp();
 
   const channels = channelsQuery.data ?? [];
   const workspaces = workspacesQuery.data ?? [];
@@ -130,13 +144,14 @@ export default function IntegrationsPage() {
     });
 
     if (!parsed.success) {
-      toast.error(parsed.error.issues[0]?.message ?? "Invalid workspace.");
+      toast.error(
+        parsed.error.issues[0]?.message ?? "Invalid workspace.",
+      );
       return;
     }
 
     try {
       await createWorkspace.mutateAsync(parsed.data);
-
       toast.success("Workspace registered successfully.");
       setWorkspaceName("");
     } catch (error) {
@@ -148,7 +163,21 @@ export default function IntegrationsPage() {
     }
   }
 
-  async function handleSaveWhatsApp(
+  function openWhatsAppForm(destination = "") {
+    setPhoneNumber(destination);
+    setVerificationCode("");
+    setConsent(false);
+    setWhatsAppStep("details");
+    setShowWhatsAppForm(true);
+  }
+
+  function closeWhatsAppForm() {
+    setShowWhatsAppForm(false);
+    setVerificationCode("");
+    setWhatsAppStep("details");
+  }
+
+  async function handleRequestVerification(
     event: React.FormEvent<HTMLFormElement>,
   ) {
     event.preventDefault();
@@ -164,29 +193,64 @@ export default function IntegrationsPage() {
     }
 
     if (!consent) {
-      toast.error("Please consent to receive reminders on this number.");
+      toast.error("Please consent to receive WhatsApp reminders.");
       return;
     }
 
     try {
-      await saveChannel.mutateAsync({
-        type: "whatsapp",
-        destination: parsedPhone.data,
-        consentGranted: true,
+      const result = await requestVerification.mutateAsync({
+        phoneNumber: parsedPhone.data,
+        consent: true,
       });
 
-      toast.success(
-        "WhatsApp number saved. It must be verified before delivery.",
-      );
-
-      setShowWhatsAppForm(false);
-      setPhoneNumber("");
-      setConsent(false);
+      setPhoneNumber(parsedPhone.data);
+      setVerificationCode("");
+      setWhatsAppStep("verification");
+      toast.success(result.message || "Verification code sent.");
     } catch (error) {
       toast.error(
         error instanceof Error
           ? error.message
-          : "Could not save WhatsApp number.",
+          : "Could not send the verification code.",
+      );
+    }
+  }
+
+  async function handleVerifyWhatsApp(
+    event: React.FormEvent<HTMLFormElement>,
+  ) {
+    event.preventDefault();
+
+    const parsedPhone = phoneSchema.safeParse(phoneNumber);
+    const parsedCode = codeSchema.safeParse(verificationCode);
+
+    if (!parsedPhone.success) {
+      toast.error("Enter a valid international phone number.");
+      setWhatsAppStep("details");
+      return;
+    }
+
+    if (!parsedCode.success) {
+      toast.error(
+        parsedCode.error.issues[0]?.message ??
+          "Enter the six-digit verification code.",
+      );
+      return;
+    }
+
+    try {
+      const result = await verifyWhatsApp.mutateAsync({
+        phoneNumber: parsedPhone.data,
+        code: parsedCode.data,
+      });
+
+      toast.success(result.message || "WhatsApp number verified.");
+      closeWhatsAppForm();
+    } catch (error) {
+      toast.error(
+        error instanceof Error
+          ? error.message
+          : "Could not verify the WhatsApp number.",
       );
     }
   }
@@ -199,7 +263,9 @@ export default function IntegrationsPage() {
       await updateChannel.mutateAsync({ id, enabled });
 
       toast.success(
-        enabled ? "Notification channel enabled." : "Notification channel disabled.",
+        enabled
+          ? "Notification channel enabled."
+          : "Notification channel disabled.",
       );
     } catch (error) {
       toast.error(
@@ -211,20 +277,19 @@ export default function IntegrationsPage() {
   }
 
   const busy =
-    saveChannel.isPending ||
     updateChannel.isPending ||
-    createWorkspace.isPending;
+    createWorkspace.isPending ||
+    requestVerification.isPending ||
+    verifyWhatsApp.isPending;
 
   return (
     <main className="min-h-screen bg-background px-4 py-6 text-foreground sm:px-6 lg:px-8">
       <div className="mx-auto max-w-[1400px] space-y-8">
-        {/* Heading */}
         <section className="flex flex-col justify-between gap-4 sm:flex-row sm:items-center">
           <div>
             <h1 className="text-xl font-semibold tracking-tight sm:text-2xl">
               Integrations
             </h1>
-
             <p className="mt-2 max-w-2xl text-sm leading-6 text-muted-foreground">
               Connect the workspaces AI Reminder should monitor, then choose
               where you want your reminders delivered.
@@ -235,9 +300,10 @@ export default function IntegrationsPage() {
             <span className="flex size-9 items-center justify-center rounded-lg bg-white/15">
               <PiBellRinging className="size-5" />
             </span>
-
             <div>
-              <p className="text-xs font-medium">Ready notification channels</p>
+              <p className="text-xs font-medium">
+                Ready notification channels
+              </p>
               <p className="text-[11px]">
                 {enabledChannels.length} enabled and verified
               </p>
@@ -245,16 +311,13 @@ export default function IntegrationsPage() {
           </div>
         </section>
 
-        {/* Explain the product workflow */}
         <section className="rounded-xl border border-border bg-secondary/40 p-4 sm:p-5">
           <div className="flex items-start gap-3">
             <PiShieldCheck className="mt-0.5 size-5 shrink-0 text-primary" />
-
             <div>
               <h2 className="text-sm font-semibold">
                 How AI Reminder works
               </h2>
-
               <p className="mt-1 text-sm leading-6 text-muted-foreground">
                 Connect a workspace so activity can be recorded. Configure
                 reminder rules for the activity or tasks you care about, then
@@ -272,20 +335,18 @@ export default function IntegrationsPage() {
             <h2 className="text-base font-semibold">
               Workspaces to monitor
             </h2>
-
             <p className="mt-1 text-sm text-muted-foreground">
               Register the browser or VS Code workspace where your activity
               happens.
             </p>
           </div>
 
-          <div className="grid grid-cols-1 gap-5 lg:grid-cols-[1fr_1fr]">
+          <div className="grid grid-cols-1 gap-5 lg:grid-cols-2">
             <div className="rounded-xl border border-border p-4 sm:p-5">
               <div className="flex items-center gap-3">
                 <span className="flex size-10 items-center justify-center rounded-lg bg-secondary">
                   <PiCode className="size-5" />
                 </span>
-
                 <div>
                   <h3 className="text-sm font-semibold">
                     Register a workspace
@@ -307,7 +368,6 @@ export default function IntegrationsPage() {
                   >
                     Workspace provider
                   </label>
-
                   <select
                     id="workspace-provider"
                     value={provider}
@@ -328,7 +388,6 @@ export default function IntegrationsPage() {
                   >
                     Workspace name
                   </label>
-
                   <input
                     id="workspace-name"
                     value={workspaceName}
@@ -348,9 +407,9 @@ export default function IntegrationsPage() {
 
                 <div className="rounded-lg bg-muted/60 p-3">
                   <p className="text-xs leading-5 text-muted-foreground">
-                    Registering a workspace records it in your account. Actual
-                    monitoring still depends on the workspace agent or client
-                    sending activity events to AI Reminder.
+                    Registering a workspace records it in your account.
+                    Actual monitoring still depends on the workspace agent or
+                    client sending activity events to AI Reminder.
                   </p>
                 </div>
 
@@ -379,7 +438,6 @@ export default function IntegrationsPage() {
                     Workspaces registered to your account.
                   </p>
                 </div>
-
                 <span className="rounded-full bg-secondary px-2.5 py-1 text-xs">
                   {workspaces.length}
                 </span>
@@ -429,7 +487,6 @@ export default function IntegrationsPage() {
                             <PiGlobe className="size-4" />
                           )}
                         </span>
-
                         <div className="min-w-0">
                           <p className="truncate text-sm font-medium">
                             {workspace.name}
@@ -441,7 +498,6 @@ export default function IntegrationsPage() {
                           </p>
                         </div>
                       </div>
-
                       <span className="shrink-0 rounded-full bg-secondary px-2 py-1 text-[10px] capitalize">
                         {workspace.status}
                       </span>
@@ -460,7 +516,6 @@ export default function IntegrationsPage() {
               <h2 className="text-base font-semibold">
                 Notification channels
               </h2>
-
               <p className="mt-1 text-sm text-muted-foreground">
                 Connect a destination for reminders, then enable the channels
                 you want to use.
@@ -469,7 +524,6 @@ export default function IntegrationsPage() {
 
             <div className="relative w-full sm:max-w-xs">
               <PiMagnifyingGlass className="absolute left-3 top-1/2 size-4 -translate-y-1/2 text-muted-foreground" />
-
               <input
                 value={search}
                 onChange={(event) => setSearch(event.target.value)}
@@ -601,18 +655,23 @@ export default function IntegrationsPage() {
                           <Button
                             type="button"
                             size="sm"
-                            onClick={() => {
-                              setPhoneNumber(savedChannel?.destination ?? "");
-                              setConsent(false);
-                              setShowWhatsAppForm(true);
-                            }}
+                            onClick={() =>
+                              openWhatsAppForm(
+                                savedChannel?.destination ?? "",
+                              )
+                            }
                           >
-                            {savedChannel ? "Edit number" : "Connect"}
+                            {savedChannel ? "Verify / edit number" : "Connect"}
                             <PiArrowUpRight className="ml-1 size-3.5" />
                           </Button>
                         </div>
                       ) : (
-                        <Button type="button" size="sm" variant="outline" disabled>
+                        <Button
+                          type="button"
+                          size="sm"
+                          variant="outline"
+                          disabled
+                        >
                           Coming soon
                         </Button>
                       )}
@@ -630,7 +689,7 @@ export default function IntegrationsPage() {
           )}
         </section>
 
-        {/* WhatsApp form */}
+        {/* WhatsApp verification dialog */}
         {showWhatsAppForm && (
           <div className="fixed inset-0 z-50 flex items-center justify-center overflow-y-auto bg-black/40 p-4 backdrop-blur-[2px]">
             <div
@@ -643,7 +702,6 @@ export default function IntegrationsPage() {
                 <span className="flex size-10 items-center justify-center rounded-xl bg-[#e9f8ee] text-[#16803d]">
                   <PiWhatsappLogo className="size-6" />
                 </span>
-
                 <div>
                   <h2
                     id="whatsapp-dialog-title"
@@ -652,88 +710,181 @@ export default function IntegrationsPage() {
                     Connect WhatsApp
                   </h2>
                   <p className="mt-1 text-xs text-muted-foreground">
-                    Set up your reminder destination.
+                    {whatsAppStep === "details"
+                      ? "Enter your number to receive a verification code."
+                      : "Enter the six-digit code sent to your WhatsApp."}
                   </p>
                 </div>
               </div>
 
-              <form
-                onSubmit={handleSaveWhatsApp}
-                className="mt-5 space-y-4"
-              >
-                <div className="space-y-1.5">
-                  <label
-                    htmlFor="whatsapp-number"
-                    className="text-xs font-medium"
-                  >
-                    WhatsApp phone number
-                  </label>
-
-                  <input
-                    id="whatsapp-number"
-                    type="tel"
-                    autoComplete="tel"
-                    required
-                    value={phoneNumber}
-                    onChange={(event) => setPhoneNumber(event.target.value)}
-                    placeholder="+2348012345678"
-                    className="h-10 w-full rounded-lg border border-input bg-background px-3 text-sm outline-none focus:border-ring focus:ring-2 focus:ring-ring/20"
-                  />
-
-                  <p className="text-[11px] leading-5 text-muted-foreground">
-                    Use international format, including + and your country code.
-                  </p>
-                </div>
-
-                <label className="flex items-start gap-2 text-xs leading-5">
-                  <input
-                    type="checkbox"
-                    checked={consent}
-                    onChange={(event) => setConsent(event.target.checked)}
-                    className="mt-0.5"
-                  />
-                  <span>
-                    I consent to receive AI Reminder notifications on this
-                    WhatsApp number.
-                  </span>
-                </label>
-
-                <div className="rounded-lg border border-border bg-muted/40 p-3">
-                  <div className="flex items-start gap-2">
-                    <PiInfo className="mt-0.5 size-4 shrink-0 text-muted-foreground" />
-                    <p className="text-xs leading-5 text-muted-foreground">
-                      Saving a number does not verify it. Actual delivery
-                      requires the WhatsApp provider setup and a verification
-                      flow. Only verified, enabled channels should be used by
-                      the reminder delivery worker.
+              {whatsAppStep === "details" ? (
+                <form
+                  onSubmit={handleRequestVerification}
+                  className="mt-5 space-y-4"
+                >
+                  <div className="space-y-1.5">
+                    <label
+                      htmlFor="whatsapp-number"
+                      className="text-xs font-medium"
+                    >
+                      WhatsApp phone number
+                    </label>
+                    <input
+                      id="whatsapp-number"
+                      type="tel"
+                      autoComplete="tel"
+                      required
+                      value={phoneNumber}
+                      onChange={(event) =>
+                        setPhoneNumber(event.target.value)
+                      }
+                      placeholder="+2348012345678"
+                      className="h-10 w-full rounded-lg border border-input bg-background px-3 text-sm outline-none focus:border-ring focus:ring-2 focus:ring-ring/20"
+                    />
+                    <p className="text-[11px] leading-5 text-muted-foreground">
+                      Use international format, including + and your country
+                      code.
                     </p>
                   </div>
-                </div>
 
-                <div className="flex flex-col-reverse gap-2 sm:flex-row sm:justify-end">
-                  <Button
+                  <label className="flex items-start gap-2 text-xs leading-5">
+                    <input
+                      type="checkbox"
+                      checked={consent}
+                      onChange={(event) =>
+                        setConsent(event.target.checked)
+                      }
+                      className="mt-0.5"
+                    />
+                    <span>
+                      I consent to receive AI Reminder notifications on this
+                      WhatsApp number.
+                    </span>
+                  </label>
+
+                  <div className="rounded-lg border border-border bg-muted/40 p-3">
+                    <div className="flex items-start gap-2">
+                      <PiInfo className="mt-0.5 size-4 shrink-0 text-muted-foreground" />
+                      <p className="text-xs leading-5 text-muted-foreground">
+                        We'll send a verification code. Your number will only
+                        be marked verified after the correct code is entered.
+                      </p>
+                    </div>
+                  </div>
+
+                  <div className="flex flex-col-reverse gap-2 sm:flex-row sm:justify-end">
+                    <Button
+                      type="button"
+                      variant="outline"
+                      disabled={requestVerification.isPending}
+                      onClick={closeWhatsAppForm}
+                    >
+                      Cancel
+                    </Button>
+                    <Button
+                      type="submit"
+                      disabled={requestVerification.isPending}
+                      className="gap-2"
+                    >
+                      {requestVerification.isPending ? (
+                        <PiSpinnerGap className="size-4 animate-spin" />
+                      ) : (
+                        <PiArrowUpRight className="size-4" />
+                      )}
+                      Send verification code
+                    </Button>
+                  </div>
+                </form>
+              ) : (
+                <form
+                  onSubmit={handleVerifyWhatsApp}
+                  className="mt-5 space-y-4"
+                >
+                  <div className="rounded-lg border border-border bg-muted/40 p-3">
+                    <p className="text-xs text-muted-foreground">
+                      Code sent to
+                    </p>
+                    <p className="mt-1 break-all text-sm font-medium">
+                      +{phoneNumber.replace(/^\+/, "")}
+                    </p>
+                  </div>
+
+                  <div className="space-y-1.5">
+                    <label
+                      htmlFor="whatsapp-code"
+                      className="text-xs font-medium"
+                    >
+                      Six-digit verification code
+                    </label>
+                    <input
+                      id="whatsapp-code"
+                      type="text"
+                      inputMode="numeric"
+                      autoComplete="one-time-code"
+                      maxLength={6}
+                      pattern="[0-9]{6}"
+                      required
+                      value={verificationCode}
+                      onChange={(event) =>
+                        setVerificationCode(
+                          event.target.value.replace(/\D/g, "").slice(0, 6),
+                        )
+                      }
+                      placeholder="123456"
+                      className="h-11 w-full rounded-lg border border-input bg-background px-3 text-center text-lg tracking-[0.4em] outline-none focus:border-ring focus:ring-2 focus:ring-ring/20"
+                    />
+                    <p className="text-[11px] leading-5 text-muted-foreground">
+                      The code expires after 10 minutes.
+                    </p>
+                  </div>
+
+                  <div className="flex flex-col-reverse gap-2 sm:flex-row sm:justify-between">
+                    <Button
+                      type="button"
+                      variant="outline"
+                      disabled={verifyWhatsApp.isPending}
+                      onClick={() => {
+                        setWhatsAppStep("details");
+                        setVerificationCode("");
+                      }}
+                    >
+                      <PiArrowLeft className="mr-1 size-4" />
+                      Back
+                    </Button>
+
+                    <Button
+                      type="submit"
+                      disabled={
+                        verifyWhatsApp.isPending ||
+                        verificationCode.length !== 6
+                      }
+                      className="gap-2"
+                    >
+                      {verifyWhatsApp.isPending ? (
+                        <PiSpinnerGap className="size-4 animate-spin" />
+                      ) : (
+                        <PiCheckCircle className="size-4" />
+                      )}
+                      Verify number
+                    </Button>
+                  </div>
+
+                  <button
                     type="button"
-                    variant="outline"
-                    disabled={saveChannel.isPending}
-                    onClick={() => setShowWhatsAppForm(false)}
+                    className="w-full text-center text-xs text-primary underline underline-offset-4 disabled:opacity-50"
+                    disabled={
+                      requestVerification.isPending ||
+                      verifyWhatsApp.isPending
+                    }
+                    onClick={() => {
+                      setWhatsAppStep("details");
+                      setVerificationCode("");
+                    }}
                   >
-                    Cancel
-                  </Button>
-
-                  <Button
-                    type="submit"
-                    disabled={saveChannel.isPending}
-                    className="gap-2"
-                  >
-                    {saveChannel.isPending ? (
-                      <PiSpinnerGap className="size-4 animate-spin" />
-                    ) : (
-                      <PiCheckCircle className="size-4" />
-                    )}
-                    Save number
-                  </Button>
-                </div>
-              </form>
+                    Use a different number or request a new code
+                  </button>
+                </form>
+              )}
             </div>
           </div>
         )}

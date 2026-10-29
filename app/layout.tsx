@@ -39,7 +39,7 @@ export default function RootLayout({ children }: Readonly<{ children: React.Reac
       className={`${inter.variable}  ${instrumentSerif.variable} dark`}
       suppressHydrationWarning
     >
-      <body className="min-h-screen bg-background text-foreground antialiased bg-noise">
+      <body className="min-h-screen h bg-background text-foreground antialiased bg-noise">
       
         <Providers>{children}</Providers>
       
