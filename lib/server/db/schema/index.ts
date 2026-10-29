@@ -404,6 +404,37 @@ updatedAt: timestamp("updated_at", {
     ],
   );
 
+
+export const whatsappVerificationChallenges = pgTable(
+  "whatsapp_verification_challenges",
+  {
+    id: uuid("id").defaultRandom().primaryKey(),
+
+    userId: text("user_id")
+      .notNull()
+      .references(() => users.id, { onDelete: "cascade" }),
+
+    destination: varchar("destination", { length: 20 }).notNull(),
+
+    codeHash: varchar("code_hash", { length: 64 }).notNull(),
+
+    expiresAt: timestamp("expires_at", {
+      withTimezone: true,
+    }).notNull(),
+
+    attempts: integer("attempts").notNull().default(0),
+
+    createdAt: timestamp("created_at", {
+      withTimezone: true,
+    }).notNull().defaultNow(),
+  },
+  (table) => [
+    index("whatsapp_verification_user_idx").on(table.userId),
+    index("whatsapp_verification_expiry_idx").on(table.expiresAt),
+  ],
+);
+
+
   export const tasks = pgTable(
     "tasks",
     {

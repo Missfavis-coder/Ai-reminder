@@ -1,595 +1,743 @@
-
 "use client";
 
 import { useMemo, useState } from "react";
 import {
+  PiArrowUpRight,
   PiBellRinging,
   PiCheckCircle,
-  PiChatCircleDots,
-  PiCheck,
-  PiEnvelopeSimple,
-  PiGlobe,
-  PiInstagramLogo,
+  PiCode,
+  PiInfo,
   PiMagnifyingGlass,
-  PiPlugsConnected,
   PiPlus,
   PiShieldCheck,
-  PiSlackLogo,
-  PiTelegramLogo,
-  PiWhatsappLogo,
-  PiX,
-  PiArrowUpRight,
-  PiInfo,
   PiSpinnerGap,
+  PiWhatsappLogo,
+  PiGlobe,
+  PiEnvelopeSimple,
+  PiInstagramLogo,
+  PiPhoneCall,
 } from "react-icons/pi";
+import { toast } from "sonner";
+import { z } from "zod";
 
 import { Button } from "@/components/ui/button";
+import {
+  useNotificationChannels,
+  useSaveNotificationChannel,
+  useUpdateNotificationChannel,
+} from "@/lib/hooks/use-notification-channels";
+import {
+  useCreateWorkspace,
+  useWorkspaces,
+} from "@/lib/hooks/use-workspace";
 
-type IntegrationCategory = "Messaging" | "Email" | "Productivity";
+const phoneSchema = z
+  .string()
+  .trim()
+  .regex(
+    /^\+[1-9]\d{7,14}$/,
+    "Enter a valid international number, e.g. +2348012345678.",
+  );
 
-type Integration = {
-  id: string;
-  name: string;
-  description: string;
-  category: IntegrationCategory;
-  icon: typeof PiWhatsappLogo;
-  iconColor: string;
-  iconBackground: string;
-  available: boolean;
-  connected: boolean;
-  details?: string;
-};
+const workspaceSchema = z.object({
+  provider: z.enum(["browser", "vscode"]),
+  name: z.string().trim().min(1, "Enter a workspace name.").max(200),
+});
 
-const initialIntegrations: Integration[] = [
+type Provider = "browser" | "vscode";
+
+const channelOptions = [
   {
-    id: "whatsapp",
+    type: "whatsapp" as const,
     name: "WhatsApp",
-    description:
-      "Receive reminders and important updates directly on WhatsApp.",
-    category: "Messaging",
+    description: "Receive reminders on your WhatsApp number.",
     icon: PiWhatsappLogo,
-    iconColor: "#16803d",
-    iconBackground: "#e9f8ee",
+    color: "#16803d",
+    background: "#e9f8ee",
     available: true,
-    connected: false,
-    details: "Connect using the WhatsApp Business Cloud API.",
   },
   {
-    id: "instagram",
-    name: "Instagram",
-    description:
-      "Explore Instagram messaging integration for supported notifications.",
-    category: "Messaging",
-    icon: PiInstagramLogo,
-    iconColor: "#c13584",
-    iconBackground: "#fceaf4",
-    available: false,
-    connected: false,
-    details: "Requires an eligible Instagram professional account and API setup.",
-  },
-  {
-    id: "telegram",
-    name: "Telegram",
-    description: "Get personal reminders through a Telegram bot.",
-    category: "Messaging",
-    icon: PiTelegramLogo,
-    iconColor: "#168ac4",
-    iconBackground: "#e8f5fc",
-    available: false,
-    connected: false,
-    details: "Telegram bot integration needs to be implemented.",
-  },
-  {
-    id: "email",
+    type: "email" as const,
     name: "Email",
-    description: "Receive reminders and notifications in your inbox.",
-    category: "Email",
+    description: "Receive reminders in your inbox.",
     icon: PiEnvelopeSimple,
-    iconColor: "#55574d",
-    iconBackground: "#f0f0eb",
+    color: "#55574d",
+    background: "#f0f0eb",
     available: false,
-    connected: false,
-    details: "Requires an email delivery provider and verified recipient.",
   },
   {
-    id: "slack",
-    name: "Slack",
-    description: "Bring your reminders into your team's Slack workspace.",
-    category: "Productivity",
-    icon: PiSlackLogo,
-    iconColor: "#611f69",
-    iconBackground: "#f5eafa",
+    type: "web_push" as const,
+    name: "Web push",
+    description: "Receive browser notifications.",
+    icon: PiGlobe,
+    color: "#2563eb",
+    background: "#eaf2ff",
     available: false,
-    connected: false,
-    details: "Slack OAuth and message delivery need to be implemented.",
+  },
+  {
+    type: "instagram" as const,
+    name: "Instagram",
+    description: "Receive supported reminders through Instagram.",
+    icon: PiInstagramLogo,
+    color: "#c13584",
+    background: "#fceaf4",
+    available: false,
   },
 ];
 
-const categories = [
-  "All integrations",
-  "Messaging",
-  "Email",
-  "Productivity",
-] as const;
-
-type CategoryFilter = (typeof categories)[number];
-
 export default function IntegrationsPage() {
-  const [integrations, setIntegrations] =
-    useState<Integration[]>(initialIntegrations);
   const [search, setSearch] = useState("");
-  const [category, setCategory] =
-    useState<CategoryFilter>("All integrations");
-  const [selectedIntegration, setSelectedIntegration] =
-    useState<Integration | null>(null);
+  const [provider, setProvider] = useState<Provider>("vscode");
+  const [workspaceName, setWorkspaceName] = useState("");
   const [phoneNumber, setPhoneNumber] = useState("");
-  const [saving, setSaving] = useState(false);
-  const [notice, setNotice] = useState("");
+  const [consent, setConsent] = useState(false);
+  const [showWhatsAppForm, setShowWhatsAppForm] = useState(false);
 
-  const connectedCount = integrations.filter(
-    (integration) => integration.connected
-  ).length;
+  const channelsQuery = useNotificationChannels();
+  const workspacesQuery = useWorkspaces();
+  const createWorkspace = useCreateWorkspace();
+  const saveChannel = useSaveNotificationChannel();
+  const updateChannel = useUpdateNotificationChannel();
 
-  const filteredIntegrations = useMemo(() => {
+  const channels = channelsQuery.data ?? [];
+  const workspaces = workspacesQuery.data ?? [];
+
+  const filteredChannels = useMemo(() => {
     const query = search.trim().toLowerCase();
 
-    return integrations.filter((integration) => {
-      const matchesSearch =
-        integration.name.toLowerCase().includes(query) ||
-        integration.description.toLowerCase().includes(query);
+    return channelOptions.filter(
+      (channel) =>
+        channel.name.toLowerCase().includes(query) ||
+        channel.description.toLowerCase().includes(query),
+    );
+  }, [search]);
 
-      const matchesCategory =
-        category === "All integrations" ||
-        integration.category === category;
+  const enabledChannels = channels.filter(
+    (channel) =>
+      channel.enabled &&
+      channel.verifiedAt &&
+      channel.consentGrantedAt,
+  );
 
-      return matchesSearch && matchesCategory;
-    });
-  }, [integrations, search, category]);
-
-  function openIntegration(integration: Integration) {
-    setNotice("");
-
-    if (!integration.available) {
-      setNotice(
-        `${integration.name} is not available yet. Its delivery integration must be implemented before you can connect it.`
-      );
-      return;
-    }
-
-    if (integration.connected) {
-      setIntegrations((current) =>
-        current.map((item) =>
-          item.id === integration.id
-            ? { ...item, connected: false }
-            : item
-        )
-      );
-
-      setNotice(`${integration.name} disconnected in this demo.`);
-      return;
-    }
-
-    setPhoneNumber("");
-    setSelectedIntegration(integration);
-  }
-
-  function connectWhatsApp(event: React.FormEvent<HTMLFormElement>) {
+  async function handleConnectWorkspace(
+    event: React.FormEvent<HTMLFormElement>,
+  ) {
     event.preventDefault();
 
-    if (!phoneNumber.trim()) return;
+    const parsed = workspaceSchema.safeParse({
+      provider,
+      name: workspaceName,
+    });
 
-    setSaving(true);
+    if (!parsed.success) {
+      toast.error(parsed.error.issues[0]?.message ?? "Invalid workspace.");
+      return;
+    }
 
-    // Demo only: this does not verify the number or connect WhatsApp.
-    // Replace with your authenticated server API integration.
-    window.setTimeout(() => {
-      setIntegrations((current) =>
-        current.map((item) =>
-          item.id === "whatsapp"
-            ? { ...item, connected: true }
-            : item
-        )
+    try {
+      await createWorkspace.mutateAsync(parsed.data);
+
+      toast.success("Workspace registered successfully.");
+      setWorkspaceName("");
+    } catch (error) {
+      toast.error(
+        error instanceof Error
+          ? error.message
+          : "Could not register workspace.",
       );
-
-      setSaving(false);
-      setSelectedIntegration(null);
-      setNotice(
-        "Demo connection saved locally. Connect your WhatsApp API before sending real reminders."
-      );
-    }, 400);
+    }
   }
+
+  async function handleSaveWhatsApp(
+    event: React.FormEvent<HTMLFormElement>,
+  ) {
+    event.preventDefault();
+
+    const parsedPhone = phoneSchema.safeParse(phoneNumber);
+
+    if (!parsedPhone.success) {
+      toast.error(
+        parsedPhone.error.issues[0]?.message ??
+          "Enter a valid phone number.",
+      );
+      return;
+    }
+
+    if (!consent) {
+      toast.error("Please consent to receive reminders on this number.");
+      return;
+    }
+
+    try {
+      await saveChannel.mutateAsync({
+        type: "whatsapp",
+        destination: parsedPhone.data,
+        consentGranted: true,
+      });
+
+      toast.success(
+        "WhatsApp number saved. It must be verified before delivery.",
+      );
+
+      setShowWhatsAppForm(false);
+      setPhoneNumber("");
+      setConsent(false);
+    } catch (error) {
+      toast.error(
+        error instanceof Error
+          ? error.message
+          : "Could not save WhatsApp number.",
+      );
+    }
+  }
+
+  async function handleToggleChannel(
+    id: string,
+    enabled: boolean,
+  ) {
+    try {
+      await updateChannel.mutateAsync({ id, enabled });
+
+      toast.success(
+        enabled ? "Notification channel enabled." : "Notification channel disabled.",
+      );
+    } catch (error) {
+      toast.error(
+        error instanceof Error
+          ? error.message
+          : "Could not update notification channel.",
+      );
+    }
+  }
+
+  const busy =
+    saveChannel.isPending ||
+    updateChannel.isPending ||
+    createWorkspace.isPending;
 
   return (
     <main className="min-h-screen bg-background px-4 py-6 text-foreground sm:px-6 lg:px-8">
-      <div className="mx-auto max-w-[1400px] space-y-7">
+      <div className="mx-auto max-w-[1400px] space-y-8">
         {/* Heading */}
         <section className="flex flex-col justify-between gap-4 sm:flex-row sm:items-center">
           <div>
-            
-
             <h1 className="text-xl font-semibold tracking-tight sm:text-2xl">
               Integrations
             </h1>
 
             <p className="mt-2 max-w-2xl text-sm leading-6 text-muted-foreground">
-              Connect your favorite channels to receive reminders wherever
-              you work.
+              Connect the workspaces AI Reminder should monitor, then choose
+              where you want your reminders delivered.
             </p>
           </div>
 
-          <div className="flex items-center gap-2 self-start rounded-lg border border-border bg-primary text-white px-3 py-2.5">
-            <span className="flex size-8 items-center justify-center rounded-lg bg-secondary text-primary">
-              <PiBellRinging className="size-4" />
+          <div className="flex items-center gap-3 rounded-lg border border-border bg-primary px-3 py-2.5 text-white">
+            <span className="flex size-9 items-center justify-center rounded-lg bg-white/15">
+              <PiBellRinging className="size-5" />
             </span>
 
             <div>
-              <p className="text-xs font-medium">Notification channels</p>
-              <p className="text-[11px] text-white">
-                {connectedCount} of {integrations.length} connected
+              <p className="text-xs font-medium">Ready notification channels</p>
+              <p className="text-[11px]">
+                {enabledChannels.length} enabled and verified
               </p>
             </div>
           </div>
         </section>
 
-        {/* Status banner */}
-        <section className="flex flex-col justify-between gap-4 rounded-xl bg-secondary/60 p-4 sm:flex-row sm:items-center sm:p-5">
+        {/* Explain the product workflow */}
+        <section className="rounded-xl border border-border bg-secondary/40 p-4 sm:p-5">
           <div className="flex items-start gap-3">
-            <div className="flex size-10 shrink-0 items-center justify-center rounded-lg border border-border bg-background">
-              <PiShieldCheck className="size-5 text-primary" />
-            </div>
+            <PiShieldCheck className="mt-0.5 size-5 shrink-0 text-primary" />
 
             <div>
               <h2 className="text-sm font-semibold">
-                Your reminders, your channels
+                How AI Reminder works
               </h2>
-              <p className="mt-1 max-w-2xl text-xs leading-5 text-muted-foreground">
-                Connect a supported channel to choose where your AI reminders
-                are delivered. You stay in control of your notification
-                preferences.
+
+              <p className="mt-1 text-sm leading-6 text-muted-foreground">
+                Connect a workspace so activity can be recorded. Configure
+                reminder rules for the activity or tasks you care about, then
+                select the notification channels you want those reminders sent
+                to. Connecting a workspace or channel does not automatically
+                create a reminder rule.
               </p>
             </div>
           </div>
-
-          <span className="inline-flex w-fit items-center gap-1.5 rounded-md border border-border bg-background px-2.5 py-1.5 text-[11px] text-muted-foreground">
-            <PiCheckCircle className="size-3.5 text-primary" />
-            Channel controls
-          </span>
         </section>
 
-        {/* Feedback */}
-        {notice && (
-          <div
-            role="status"
-            className="flex items-start justify-between gap-3 rounded-lg border border-border bg-muted/50 p-3 text-xs leading-5"
-          >
-            <p>{notice}</p>
-            <button
-              type="button"
-              aria-label="Dismiss notification"
-              onClick={() => setNotice("")}
-              className="shrink-0 rounded p-1 hover:bg-muted"
-            >
-              <PiX className="size-3.5" />
-            </button>
-          </div>
-        )}
+        {/* Workspace monitoring */}
+        <section className="space-y-4">
+          <div>
+            <h2 className="text-base font-semibold">
+              Workspaces to monitor
+            </h2>
 
-        {/* Stats
-        
-        <section className="grid grid-cols-1 gap-3 sm:grid-cols-3">
-          <div className="rounded-xl border border-border bg-card p-4">
-            <p className="text-xs text-muted-foreground">
-              Available integrations
-            </p>
-            <p className="mt-2 text-2xl font-semibold">
-              {integrations.filter((item) => item.available).length}
-            </p>
-            <p className="mt-1 text-[11px] text-muted-foreground">
-              Ready for connection setup
+            <p className="mt-1 text-sm text-muted-foreground">
+              Register the browser or VS Code workspace where your activity
+              happens.
             </p>
           </div>
 
-          <div className="rounded-xl border border-border bg-card p-4">
-            <p className="text-xs text-muted-foreground">
-              Connected channels
-            </p>
-            <p className="mt-2 text-2xl font-semibold">{connectedCount}</p>
-            <p className="mt-1 text-[11px] text-muted-foreground">
-              Enabled in this interface
-            </p>
-          </div>
+          <div className="grid grid-cols-1 gap-5 lg:grid-cols-[1fr_1fr]">
+            <div className="rounded-xl border border-border p-4 sm:p-5">
+              <div className="flex items-center gap-3">
+                <span className="flex size-10 items-center justify-center rounded-lg bg-secondary">
+                  <PiCode className="size-5" />
+                </span>
 
-          <div className="rounded-xl border border-border bg-card p-4">
-            <p className="text-xs text-muted-foreground">Coming soon</p>
-            <p className="mt-2 text-2xl font-semibold">
-              {integrations.filter((item) => !item.available).length}
-            </p>
-            <p className="mt-1 text-[11px] text-muted-foreground">
-              Integrations awaiting implementation
-            </p>
+                <div>
+                  <h3 className="text-sm font-semibold">
+                    Register a workspace
+                  </h3>
+                  <p className="text-xs text-muted-foreground">
+                    Add a workspace to your monitoring list.
+                  </p>
+                </div>
+              </div>
+
+              <form
+                onSubmit={handleConnectWorkspace}
+                className="mt-5 space-y-4"
+              >
+                <div className="space-y-1.5">
+                  <label
+                    htmlFor="workspace-provider"
+                    className="text-xs font-medium"
+                  >
+                    Workspace provider
+                  </label>
+
+                  <select
+                    id="workspace-provider"
+                    value={provider}
+                    onChange={(event) =>
+                      setProvider(event.target.value as Provider)
+                    }
+                    className="h-10 w-full rounded-lg border border-input bg-background px-3 text-sm outline-none focus:border-ring focus:ring-2 focus:ring-ring/20"
+                  >
+                    <option value="vscode">Visual Studio Code</option>
+                    <option value="browser">Browser</option>
+                  </select>
+                </div>
+
+                <div className="space-y-1.5">
+                  <label
+                    htmlFor="workspace-name"
+                    className="text-xs font-medium"
+                  >
+                    Workspace name
+                  </label>
+
+                  <input
+                    id="workspace-name"
+                    value={workspaceName}
+                    onChange={(event) =>
+                      setWorkspaceName(event.target.value)
+                    }
+                    placeholder={
+                      provider === "vscode"
+                        ? "e.g. AI Reminder project"
+                        : "e.g. Research workspace"
+                    }
+                    maxLength={200}
+                    required
+                    className="h-10 w-full rounded-lg border border-input bg-background px-3 text-sm outline-none placeholder:text-muted-foreground focus:border-ring focus:ring-2 focus:ring-ring/20"
+                  />
+                </div>
+
+                <div className="rounded-lg bg-muted/60 p-3">
+                  <p className="text-xs leading-5 text-muted-foreground">
+                    Registering a workspace records it in your account. Actual
+                    monitoring still depends on the workspace agent or client
+                    sending activity events to AI Reminder.
+                  </p>
+                </div>
+
+                <Button
+                  type="submit"
+                  disabled={busy}
+                  className="w-full gap-2"
+                >
+                  {createWorkspace.isPending ? (
+                    <PiSpinnerGap className="size-4 animate-spin" />
+                  ) : (
+                    <PiPlus className="size-4" />
+                  )}
+                  Register workspace
+                </Button>
+              </form>
+            </div>
+
+            <div className="rounded-xl border border-border p-4 sm:p-5">
+              <div className="flex items-center justify-between gap-3">
+                <div>
+                  <h3 className="text-sm font-semibold">
+                    Your workspaces
+                  </h3>
+                  <p className="mt-1 text-xs text-muted-foreground">
+                    Workspaces registered to your account.
+                  </p>
+                </div>
+
+                <span className="rounded-full bg-secondary px-2.5 py-1 text-xs">
+                  {workspaces.length}
+                </span>
+              </div>
+
+              {workspacesQuery.isPending ? (
+                <div className="flex items-center gap-2 py-8 text-sm text-muted-foreground">
+                  <PiSpinnerGap className="size-4 animate-spin" />
+                  Loading workspaces...
+                </div>
+              ) : workspacesQuery.isError ? (
+                <div className="py-8">
+                  <p className="text-sm text-destructive">
+                    Could not load workspaces.
+                  </p>
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    className="mt-3"
+                    onClick={() => void workspacesQuery.refetch()}
+                  >
+                    Try again
+                  </Button>
+                </div>
+              ) : workspaces.length === 0 ? (
+                <div className="mt-5 rounded-lg border border-dashed border-border p-6 text-center">
+                  <PiPhoneCall className="mx-auto size-6 text-muted-foreground" />
+                  <p className="mt-3 text-sm font-medium">
+                    No workspaces registered
+                  </p>
+                  <p className="mt-1 text-xs leading-5 text-muted-foreground">
+                    Add a browser or VS Code workspace to get started.
+                  </p>
+                </div>
+              ) : (
+                <div className="mt-4 space-y-3">
+                  {workspaces.map((workspace) => (
+                    <div
+                      key={workspace.id}
+                      className="flex items-start justify-between gap-3 rounded-lg border border-border p-3"
+                    >
+                      <div className="flex min-w-0 items-start gap-3">
+                        <span className="flex size-9 shrink-0 items-center justify-center rounded-lg bg-secondary">
+                          {workspace.provider === "vscode" ? (
+                            <PiCode className="size-4" />
+                          ) : (
+                            <PiGlobe className="size-4" />
+                          )}
+                        </span>
+
+                        <div className="min-w-0">
+                          <p className="truncate text-sm font-medium">
+                            {workspace.name}
+                          </p>
+                          <p className="mt-1 text-xs capitalize text-muted-foreground">
+                            {workspace.provider === "vscode"
+                              ? "Visual Studio Code"
+                              : "Browser"}
+                          </p>
+                        </div>
+                      </div>
+
+                      <span className="shrink-0 rounded-full bg-secondary px-2 py-1 text-[10px] capitalize">
+                        {workspace.status}
+                      </span>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
           </div>
         </section>
- */}
-        {/* Integrations list */}
+
+        {/* Notification channels */}
         <section className="space-y-4">
           <div className="flex flex-col justify-between gap-4 sm:flex-row sm:items-end">
             <div>
-              <h2 className="text-[15px] font-semibold">
-                Your integrations
+              <h2 className="text-base font-semibold">
+                Notification channels
               </h2>
+
               <p className="mt-1 text-sm text-muted-foreground">
-                Manage how AI Reminder reaches you.
+                Connect a destination for reminders, then enable the channels
+                you want to use.
               </p>
             </div>
 
             <div className="relative w-full sm:max-w-xs">
               <PiMagnifyingGlass className="absolute left-3 top-1/2 size-4 -translate-y-1/2 text-muted-foreground" />
+
               <input
                 value={search}
                 onChange={(event) => setSearch(event.target.value)}
-                placeholder="Search integrations..."
-                aria-label="Search integrations"
-                className="h-10 w-full rounded-lg border border-input bg-background pl-9 pr-3 text-sm outline-none placeholder:text-muted-foreground focus:border-ring focus:ring-2 focus:ring-ring/20"
+                placeholder="Search channels..."
+                aria-label="Search notification channels"
+                className="h-10 w-full rounded-lg border border-input bg-background pl-9 pr-3 text-sm outline-none focus:border-ring focus:ring-2 focus:ring-ring/20"
               />
             </div>
           </div>
 
-          {/* Category filters */}
-          <div className="flex flex-wrap gap-2">
-            {categories.map((item) => (
-              <button
-                key={item}
-                type="button"
-                onClick={() => setCategory(item)}
-                className={`rounded-lg border px-3 py-2 text-xs transition cursor-pointer ${
-                  category === item
-                    ? "border-primary bg-primary text-primary-foreground"
-                    : "border-border bg-background text-muted-foreground hover:bg-muted hover:text-foreground"
-                }`}
+          {channelsQuery.isError && (
+            <div className="rounded-lg border border-destructive/30 p-3 text-sm">
+              <p className="text-destructive">
+                Could not load your notification channels.
+              </p>
+              <Button
+                variant="outline"
+                size="sm"
+                className="mt-2"
+                onClick={() => void channelsQuery.refetch()}
               >
-                {item}
-              </button>
-            ))}
-          </div>
+                Try again
+              </Button>
+            </div>
+          )}
 
-          {/* Cards */}
-          <div className="grid grid-cols-1 gap-4 lg:grid-cols-2">
-            {filteredIntegrations.map((integration) => {
-              const Icon = integration.icon;
+          {channelsQuery.isPending ? (
+            <div className="flex items-center gap-2 py-8 text-sm text-muted-foreground">
+              <PiSpinnerGap className="size-4 animate-spin" />
+              Loading notification channels...
+            </div>
+          ) : (
+            <div className="grid grid-cols-1 gap-4 lg:grid-cols-2">
+              {filteredChannels.map((option) => {
+                const Icon = option.icon;
+                const savedChannel = channels.find(
+                  (channel) => channel.type === option.type,
+                );
 
-              return (
-                <article
-                  key={integration.id}
-                  className="flex min-w-0 flex-col rounded-xl  bg-neutral-100 p-4 transition hover:border-primary/40 sm:p-5"
-                >
-                  <div className="flex items-start justify-between gap-3">
-                    <div
-                      className="flex size-11 shrink-0 items-center justify-center rounded-xl"
-                      style={{
-                        backgroundColor: integration.iconBackground,
-                        color: integration.iconColor,
-                      }}
-                    >
-                      <Icon className="size-6" />
+                const verified = Boolean(
+                  savedChannel?.verifiedAt &&
+                    savedChannel?.consentGrantedAt,
+                );
+
+                const isEnabled = Boolean(savedChannel?.enabled);
+
+                return (
+                  <article
+                    key={option.type}
+                    className="flex flex-col rounded-xl border border-border p-4 sm:p-5"
+                  >
+                    <div className="flex items-start justify-between gap-3">
+                      <span
+                        className="flex size-11 items-center justify-center rounded-xl"
+                        style={{
+                          backgroundColor: option.background,
+                          color: option.color,
+                        }}
+                      >
+                        <Icon className="size-6" />
+                      </span>
+
+                      <span
+                        className={`rounded-full px-2.5 py-1 text-[10px] ${
+                          !option.available
+                            ? "bg-muted text-muted-foreground"
+                            : verified && isEnabled
+                              ? "bg-primary/10 text-primary"
+                              : savedChannel
+                                ? "bg-secondary text-foreground"
+                                : "bg-muted text-muted-foreground"
+                        }`}
+                      >
+                        {!option.available
+                          ? "Coming soon"
+                          : verified && isEnabled
+                            ? "Enabled"
+                            : savedChannel
+                              ? verified
+                                ? "Disabled"
+                                : "Verification needed"
+                              : "Not connected"}
+                      </span>
                     </div>
 
-                    {integration.connected ? (
-                      <span className="inline-flex items-center gap-1.5 rounded-full bg-primary/10 px-2.5 py-1 text-[10px] font-medium text-primary">
-                        <span className="size-1.5 rounded-full bg-primary" />
-                        Connected
-                      </span>
-                    ) : integration.available ? (
-                      <span className="inline-flex items-center gap-1.5 rounded-full bg-secondary px-2.5 py-1 text-[10px] text-foreground">
-                        Available
-                      </span>
-                    ) : (
-                      <span className="rounded-full bg-muted px-2.5 py-1 text-[10px] text-muted-foreground">
-                        Coming soon
-                      </span>
-                    )}
-                  </div>
+                    <div className="mt-4 flex-1">
+                      <h3 className="text-sm font-semibold">
+                        {option.name}
+                      </h3>
+                      <p className="mt-1.5 text-sm leading-5 text-muted-foreground">
+                        {option.description}
+                      </p>
 
-                  <div className="mt-4 flex-1">
-                    <h3 className="text-sm font-semibold">
-                      {integration.name}
-                    </h3>
-                    <p className="mt-1.5 min-h-10 text-sm leading-5 text-muted-foreground">
-                      {integration.description}
-                    </p>
-                  </div>
-
-                  <div className="mt-4 flex items-center justify-between gap-3 border-t border-neural-100 pt-4">
-                    <span className="text-[11px] text-muted-foreground">
-                      {integration.category}
-                    </span>
-
-                    <Button
-                      type="button"
-                      size="sm"
-                      variant={integration.connected ? "outline" : "default"}
-                      disabled={!integration.available}
-                      onClick={() => openIntegration(integration)}
-                      className="gap-1.5 cursor-pointer"
-                    >
-                      {integration.connected ? (
-                        <>
-                          Disconnect
-                          <PiX className="size-3.5" />
-                        </>
-                      ) : integration.available ? (
-                        <>
-                          Connect
-                          <PiPlus className="size-3.5" />
-                        </>
-                      ) : (
-                        "Coming soon"
+                      {savedChannel && (
+                        <p className="mt-2 break-all text-xs text-muted-foreground">
+                          {savedChannel.destination}
+                        </p>
                       )}
-                    </Button>
-                  </div>
-                </article>
-              );
-            })}
-          </div>
+                    </div>
 
-          {filteredIntegrations.length === 0 && (
-            <div className="rounded-xl border border-dashed border-border py-12 text-center">
-              <PiMagnifyingGlass className="mx-auto size-7 text-muted-foreground" />
-              <p className="mt-3 text-sm font-medium">
-                No integrations found
-              </p>
-              <p className="mt-1 text-xs text-muted-foreground">
-                Try a different search or category.
-              </p>
+                    <div className="mt-4 flex items-center justify-between gap-3 border-t border-border pt-4">
+                      <span className="text-[11px] text-muted-foreground">
+                        {option.available
+                          ? verified
+                            ? "Ready for configuration"
+                            : "Setup required"
+                          : "Integration not implemented"}
+                      </span>
+
+                      {option.available && option.type === "whatsapp" ? (
+                        <div className="flex flex-wrap justify-end gap-2">
+                          {savedChannel && verified && (
+                            <Button
+                              type="button"
+                              size="sm"
+                              variant="outline"
+                              disabled={busy}
+                              onClick={() =>
+                                void handleToggleChannel(
+                                  savedChannel.id,
+                                  !savedChannel.enabled,
+                                )
+                              }
+                            >
+                              {savedChannel.enabled ? "Disable" : "Enable"}
+                            </Button>
+                          )}
+
+                          <Button
+                            type="button"
+                            size="sm"
+                            onClick={() => {
+                              setPhoneNumber(savedChannel?.destination ?? "");
+                              setConsent(false);
+                              setShowWhatsAppForm(true);
+                            }}
+                          >
+                            {savedChannel ? "Edit number" : "Connect"}
+                            <PiArrowUpRight className="ml-1 size-3.5" />
+                          </Button>
+                        </div>
+                      ) : (
+                        <Button type="button" size="sm" variant="outline" disabled>
+                          Coming soon
+                        </Button>
+                      )}
+                    </div>
+                  </article>
+                );
+              })}
+
+              {filteredChannels.length === 0 && (
+                <div className="rounded-xl border border-dashed border-border p-8 text-center text-sm text-muted-foreground">
+                  No channels match your search.
+                </div>
+              )}
             </div>
           )}
         </section>
 
-        {/* Help footer */}
-        <section className="flex flex-col justify-between gap-3 rounded-xl border border-border p-4 sm:flex-row sm:items-center">
-          <div className="flex items-start gap-3">
-            <PiInfo className="mt-0.5 size-4 shrink-0 text-muted-foreground" />
-            <div>
-              <p className="text-sm font-medium">
-                Need help connecting a channel?
-              </p>
-              <p className="mt-1 text-[12px] text-muted-foreground">
-                Integrations may require provider credentials and account
-                verification before reminders can be delivered.
-              </p>
-            </div>
-          </div>
-
-          <a
-            href="/settings"
-            className="inline-flex items-center gap-1 text-xs font-medium text-primary hover:underline"
-          >
-            Notification settings
-            <PiArrowUpRight className="size-3.5" />
-          </a>
-        </section>
-      </div>
-
-      {/* WhatsApp connection dialog */}
-      {selectedIntegration && (
-        <div
-          className="fixed inset-0 z-50 flex items-center justify-center overflow-y-auto bg-black/40 p-4 backdrop-blur-[2px]"
-          onMouseDown={(event) => {
-            if (event.target === event.currentTarget && !saving) {
-              setSelectedIntegration(null);
-            }
-          }}
-        >
-          <div
-            role="dialog"
-            aria-modal="true"
-            aria-labelledby="connect-dialog-title"
-            className="my-auto w-full max-w-md rounded-2xl border border-border bg-background p-5 text-foreground shadow-xl sm:p-6"
-          >
-            <div className="flex items-start justify-between gap-3">
+        {/* WhatsApp form */}
+        {showWhatsAppForm && (
+          <div className="fixed inset-0 z-50 flex items-center justify-center overflow-y-auto bg-black/40 p-4 backdrop-blur-[2px]">
+            <div
+              role="dialog"
+              aria-modal="true"
+              aria-labelledby="whatsapp-dialog-title"
+              className="my-auto w-full max-w-md rounded-2xl border border-border bg-background p-5 shadow-xl sm:p-6"
+            >
               <div className="flex items-center gap-3">
-                <div
-                  className="flex size-10 items-center justify-center rounded-xl"
-                  style={{
-                    backgroundColor: selectedIntegration.iconBackground,
-                    color: selectedIntegration.iconColor,
-                  }}
-                >
-                  <selectedIntegration.icon className="size-6" />
-                </div>
+                <span className="flex size-10 items-center justify-center rounded-xl bg-[#e9f8ee] text-[#16803d]">
+                  <PiWhatsappLogo className="size-6" />
+                </span>
 
                 <div>
                   <h2
-                    id="connect-dialog-title"
+                    id="whatsapp-dialog-title"
                     className="text-base font-semibold"
                   >
-                    Connect {selectedIntegration.name}
+                    Connect WhatsApp
                   </h2>
                   <p className="mt-1 text-xs text-muted-foreground">
-                    Set up your reminder channel.
+                    Set up your reminder destination.
                   </p>
                 </div>
               </div>
 
-              <button
-                type="button"
-                disabled={saving}
-                aria-label="Close dialog"
-                onClick={() => setSelectedIntegration(null)}
-                className="rounded-md p-2 text-muted-foreground hover:bg-muted"
+              <form
+                onSubmit={handleSaveWhatsApp}
+                className="mt-5 space-y-4"
               >
-                <PiX className="size-4" />
-              </button>
-            </div>
+                <div className="space-y-1.5">
+                  <label
+                    htmlFor="whatsapp-number"
+                    className="text-xs font-medium"
+                  >
+                    WhatsApp phone number
+                  </label>
 
-            <div className="my-5 rounded-lg border border-border bg-muted/50 p-3">
-              <p className="text-xs leading-5 text-muted-foreground">
-                {selectedIntegration.details}
-              </p>
-            </div>
+                  <input
+                    id="whatsapp-number"
+                    type="tel"
+                    autoComplete="tel"
+                    required
+                    value={phoneNumber}
+                    onChange={(event) => setPhoneNumber(event.target.value)}
+                    placeholder="+2348012345678"
+                    className="h-10 w-full rounded-lg border border-input bg-background px-3 text-sm outline-none focus:border-ring focus:ring-2 focus:ring-ring/20"
+                  />
 
-            <form onSubmit={connectWhatsApp} className="space-y-4">
-              <div className="space-y-1.5">
-                <label
-                  htmlFor="whatsapp-phone"
-                  className="text-xs font-medium"
-                >
-                  WhatsApp phone number
+                  <p className="text-[11px] leading-5 text-muted-foreground">
+                    Use international format, including + and your country code.
+                  </p>
+                </div>
+
+                <label className="flex items-start gap-2 text-xs leading-5">
+                  <input
+                    type="checkbox"
+                    checked={consent}
+                    onChange={(event) => setConsent(event.target.checked)}
+                    className="mt-0.5"
+                  />
+                  <span>
+                    I consent to receive AI Reminder notifications on this
+                    WhatsApp number.
+                  </span>
                 </label>
 
-                <input
-                  id="whatsapp-phone"
-                  type="tel"
-                  autoComplete="tel"
-                  required
-                  value={phoneNumber}
-                  onChange={(event) => setPhoneNumber(event.target.value)}
-                  placeholder="+2348012345678"
-                  className="h-10 w-full rounded-lg border border-input bg-background px-3 text-sm outline-none placeholder:text-muted-foreground focus:border-ring focus:ring-2 focus:ring-ring/20"
-                />
+                <div className="rounded-lg border border-border bg-muted/40 p-3">
+                  <div className="flex items-start gap-2">
+                    <PiInfo className="mt-0.5 size-4 shrink-0 text-muted-foreground" />
+                    <p className="text-xs leading-5 text-muted-foreground">
+                      Saving a number does not verify it. Actual delivery
+                      requires the WhatsApp provider setup and a verification
+                      flow. Only verified, enabled channels should be used by
+                      the reminder delivery worker.
+                    </p>
+                  </div>
+                </div>
 
-                <p className="text-[11px] leading-5 text-muted-foreground">
-                  Enter the number you want to use for reminders, including
-                  your country code.
-                </p>
-              </div>
+                <div className="flex flex-col-reverse gap-2 sm:flex-row sm:justify-end">
+                  <Button
+                    type="button"
+                    variant="outline"
+                    disabled={saveChannel.isPending}
+                    onClick={() => setShowWhatsAppForm(false)}
+                  >
+                    Cancel
+                  </Button>
 
-              <div className="rounded-lg border border-border p-3">
-                <p className="text-xs font-medium">Before you continue</p>
-                <p className="mt-1 text-[11px] leading-5 text-muted-foreground">
-                  Real WhatsApp delivery requires a configured WhatsApp
-                  Business Cloud API, server-side credentials, and recipient
-                  verification or consent as applicable.
-                </p>
-              </div>
-
-              <div className="flex flex-col-reverse gap-2 pt-1 sm:flex-row sm:justify-end">
-                <Button
-                  type="button"
-                  variant="outline"
-                  disabled={saving}
-                  onClick={() => setSelectedIntegration(null)}
-                >
-                  Cancel
-                </Button>
-
-                <Button type="submit" disabled={saving} className="gap-2">
-                  {saving ? (
-                    <>
+                  <Button
+                    type="submit"
+                    disabled={saveChannel.isPending}
+                    className="gap-2"
+                  >
+                    {saveChannel.isPending ? (
                       <PiSpinnerGap className="size-4 animate-spin" />
-                      Saving...
-                    </>
-                  ) : (
-                    <>
-                      Continue
-                      <PiArrowUpRight className="size-4" />
-                    </>
-                  )}
-                </Button>
-              </div>
-            </form>
+                    ) : (
+                      <PiCheckCircle className="size-4" />
+                    )}
+                    Save number
+                  </Button>
+                </div>
+              </form>
+            </div>
           </div>
-        </div>
-      )}
+        )}
+      </div>
     </main>
   );
 }

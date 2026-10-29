@@ -18,10 +18,7 @@ export function getWhatsAppConfig() {
   };
 }
 
-export async function sendWhatsAppText(
-  recipient: string,
-  message: string,
-) {
+async function postWhatsApp(payload: Record<string, unknown>) {
   const config = getWhatsAppConfig();
 
   const response = await fetch(
@@ -34,22 +31,74 @@ export async function sendWhatsAppText(
       },
       body: JSON.stringify({
         messaging_product: "whatsapp",
-        recipient_type: "individual",
-        to: recipient,
-        type: "text",
-        text: { body: message },
+        ...payload,
       }),
       signal: AbortSignal.timeout(10_000),
+      cache: "no-store",
     },
   );
 
   const result = await response.json().catch(() => null);
 
   if (!response.ok) {
-    throw new Error(
-      `WhatsApp request failed (${response.status}): ${JSON.stringify(result)}`,
-    );
+    console.error("WhatsApp Cloud API request failed", {
+      status: response.status,
+      error: result?.error?.message ?? "Unknown provider error",
+      code: result?.error?.code,
+    });
+
+    throw new Error("WhatsApp Cloud API rejected the message");
   }
 
   return result;
+}
+
+export async function sendWhatsAppText(
+  recipient: string,
+  message: string,
+) {
+  return postWhatsApp({
+    recipient_type: "individual",
+    to: recipient,
+    type: "text",
+    text: { body: message },
+  });
+}
+
+export async function sendWhatsAppVerificationTemplate(
+  recipient: string,
+  code: string,
+) {
+  const templateName =
+    process.env.WHATSAPP_VERIFICATION_TEMPLATE_NAME;
+
+  const language =
+    process.env.WHATSAPP_VERIFICATION_TEMPLATE_LANGUAGE ?? "en_US";
+
+  if (!templateName) {
+    throw new Error(
+      "WHATSAPP_VERIFICATION_TEMPLATE_NAME is not configured",
+    );
+  }
+
+  return postWhatsApp({
+    recipient_type: "individual",
+    to: recipient,
+    type: "template",
+    template: {
+      name: templateName,
+      language: { code: language },
+      components: [
+        {
+          type: "body",
+          parameters: [
+            {
+              type: "text",
+              text: code,
+            },
+          ],
+        },
+      ],
+    },
+  });
 }
