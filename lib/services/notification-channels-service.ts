@@ -11,6 +11,12 @@ import type {
   UpdateNotificationChannelInput,
 } from "@/lib/hooks/use-notification-channels";
 
+interface WhatsAppVerificationResponse {
+  success: boolean;
+  message: string;
+  expiresInSeconds?: number;
+}
+
 export const notificationChannelsService = {
   async getAll(signal?: AbortSignal): Promise<NotificationChannel[]> {
     const response =
@@ -27,7 +33,11 @@ export const notificationChannelsService = {
   ): Promise<NotificationChannel> {
     const response = await apiClient.post<{
       channel: NotificationChannel;
-    }>("/api/notification-channels", input);
+    }>("/api/notification-channels", {
+      type: input.type,
+      destination: input.destination,
+      consent: input.consentGranted,
+    });
 
     return response.channel;
   },
@@ -44,5 +54,31 @@ export const notificationChannelsService = {
     });
 
     return response.channel;
+  },
+
+  async requestWhatsAppVerification(input: {
+    phoneNumber: string;
+    consent: boolean;
+  }): Promise<WhatsAppVerificationResponse> {
+    return apiClient.post<WhatsAppVerificationResponse>(
+      "/api/notification-channels/whatsapp/verification",
+      {
+        action: "request",
+        ...input,
+      },
+    );
+  },
+
+  async verifyWhatsApp(input: {
+    phoneNumber: string;
+    code: string;
+  }): Promise<WhatsAppVerificationResponse> {
+    return apiClient.post<WhatsAppVerificationResponse>(
+      "/api/notification-channels/whatsapp/verification",
+      {
+        action: "verify",
+        ...input,
+      },
+    );
   },
 };

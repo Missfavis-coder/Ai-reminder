@@ -28,6 +28,32 @@ export interface UpdateNotificationChannelInput {
   enabled: boolean;
 }
 
+
+export function useRequestWhatsAppVerification() {
+  return useMutation({
+    mutationFn: (input: {
+      phoneNumber: string;
+      consent: boolean;
+    }) =>
+      notificationChannelsService.requestWhatsAppVerification(input),
+  });
+}
+
+export function useVerifyWhatsApp() {
+  const queryClient = useQueryClient();
+
+  return useMutation({
+    mutationFn: (input: {
+      phoneNumber: string;
+      code: string;
+    }) => notificationChannelsService.verifyWhatsApp(input),
+
+    onSuccess: () => {
+      void queryClient.invalidateQueries({ queryKey });
+    },
+  });
+}
+
 export function useNotificationChannels() {
   return useQuery({
     queryKey,

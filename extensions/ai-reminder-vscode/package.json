@@ -1,0 +1,42 @@
+{
+  "name": "ai-reminder-vscode",
+  "displayName": "AI Reminder",
+  "description": "Tracks development activity and work sessions for AI Reminder.",
+  "version": "0.1.0",
+  "publisher": "ai-reminder",
+  "engines": {
+    "vscode": "^1.85.0"
+  },
+  "categories": [
+    "Other"
+  ],
+  "activationEvents": [
+    "onStartupFinished"
+  ],
+  "main": "./out/extension.js",
+  "scripts": {
+    "compile": "tsc -p ./",
+    "watch": "tsc -watch -p ./"
+  },
+  "devDependencies": {
+    "@types/node": "^22.20.5",
+    "@types/vscode": "^1.85.0",
+    "typescript": "^5.7.0"
+  },
+  "contributes": {
+  "commands": [
+    {
+      "command": "aiReminder.showActivity",
+      "title": "AI Reminder: Show Activity"
+    },
+    {
+      "command": "aiReminder.startSession",
+      "title": "AI Reminder: Start Session"
+    },
+    {
+      "command": "aiReminder.endSession",
+      "title": "AI Reminder: End Session"
+    }
+  ]
+}
+}
