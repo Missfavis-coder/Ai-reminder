@@ -482,3 +482,45 @@ reminderChannelIds: jsonb("reminder_channel_ids")
     ],
   );
   
+
+  export const extensionTokens = pgTable(
+    "extension_tokens",
+    {
+      id: uuid("id").defaultRandom().primaryKey(),
+  
+      userId: text("user_id")
+        .notNull()
+        .references(() => users.id, {
+          onDelete: "cascade",
+        }),
+  
+      // Store only the SHA-256 hash, never the raw token.
+      tokenHash: text("token_hash").notNull().unique(),
+  
+      name: varchar("name", { length: 200 })
+        .notNull()
+        .default("VS Code Extension"),
+  
+      expiresAt: timestamp("expires_at", {
+        withTimezone: true,
+      }).notNull(),
+  
+      revokedAt: timestamp("revoked_at", {
+        withTimezone: true,
+      }),
+  
+      createdAt: timestamp("created_at", {
+        withTimezone: true,
+      })
+        .notNull()
+        .defaultNow(),
+  
+      lastUsedAt: timestamp("last_used_at", {
+        withTimezone: true,
+      }),
+    },
+    (table) => [
+      index("extension_tokens_user_id_idx").on(table.userId),
+      index("extension_tokens_expires_at_idx").on(table.expiresAt),
+    ],
+  );

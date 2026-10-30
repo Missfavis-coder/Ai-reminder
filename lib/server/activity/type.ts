@@ -1,4 +1,3 @@
-
 import { z } from "zod";
 
 export const activityEventSchema = z.object({
@@ -8,6 +7,7 @@ export const activityEventSchema = z.object({
   eventType: z.enum([
     "workspace_focused",
     "workspace_blurred",
+    "editor_changed",
     "heartbeat",
     "workspace_stopped",
     "idle_started",
@@ -15,6 +15,8 @@ export const activityEventSchema = z.object({
   ]),
 
   occurredAt: z.string().datetime({ offset: true }),
+
+  metadata: z.record(z.string(), z.unknown()).optional(),
 });
 
 export type ActivityEventInput = z.infer<

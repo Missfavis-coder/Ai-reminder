@@ -49,7 +49,7 @@ export async function processActivityEvent(input: {
         eventType: event.eventType,
         occurredAt,
         receivedAt,
-        metadata: {},
+        metadata: event.metadata ?? {},
       })
       .onConflictDoNothing({
         target: activityEvents.eventId,

@@ -11,8 +11,11 @@ export interface ActivityEventInput {
   workspaceId: string;
   eventType: ActivityEventType;
   occurredAt: string;
+  metadata?: Record<string, unknown>;
 }
 
 export interface ActivityEventResponse {
+  accepted?: boolean;
+  duplicate?: boolean;
   [key: string]: unknown;
 }

@@ -21,6 +21,7 @@ export type SessionEvent = {
   eventType:
     | "workspace_focused"
     | "workspace_blurred"
+    | "editor_changed"
     | "heartbeat"
     | "workspace_stopped"
     | "idle_started"
