@@ -3,6 +3,8 @@ import { NextRequest, NextResponse } from "next/server";
 import { and, desc, eq } from "drizzle-orm";
 import { ZodError, z } from "zod";
 
+import { getUserIdFromExtensionToken } from
+  "@/lib/server/auth/extension-token";
 import { db } from "@/lib/server/db";
 import { workspaces } from "@/lib/server/db/schema";
 import { getCurrentUserId } from "@/lib/server/auth/session";
@@ -12,6 +14,22 @@ const createWorkspaceSchema = z.object({
   name: z.string().trim().min(1).max(200),
   deviceId: z.string().trim().min(1).max(200).optional(),
 });
+
+async function authenticateWorkspaceRequest(
+  request: NextRequest,
+): Promise<string | null> {
+  const authorization = request.headers.get("authorization");
+
+  if (authorization) {
+    const match = authorization.match(/^Bearer ([^\s]+)$/i);
+
+    if (!match) return null;
+
+    return getUserIdFromExtensionToken(match[1]);
+  }
+
+  return getCurrentUserId();
+}
 
 export async function GET() {
   try {
@@ -43,7 +61,8 @@ export async function GET() {
 
 export async function POST(request: NextRequest) {
   try {
-    const userId = await getCurrentUserId();
+    const userId = await authenticateWorkspaceRequest(request);
+
     if (!userId) {
       return NextResponse.json(
         { error: "Unauthorized" },
@@ -109,7 +128,10 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    return NextResponse.json({ workspace }, { status: 201 });
+    return NextResponse.json(
+      { workspace },
+      { status: 201 },
+    );
   } catch (error) {
     if (error instanceof ZodError) {
       return NextResponse.json(

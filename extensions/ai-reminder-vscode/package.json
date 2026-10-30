@@ -36,6 +36,14 @@
     {
       "command": "aiReminder.endSession",
       "title": "AI Reminder: End Session"
+    },
+    {
+      "command": "aiReminder.connect",
+      "title": "AI Reminder: Connect Account"
+    },
+    {
+      "command": "aiReminder.disconnect",
+      "title": "AI Reminder: Disconnect Account"
     }
   ]
 }

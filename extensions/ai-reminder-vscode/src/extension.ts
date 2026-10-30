@@ -1,8 +1,10 @@
-
 import * as vscode from "vscode";
 import { randomUUID } from "node:crypto";
+import { AiReminderApi } from "./api";
 
 let output: vscode.OutputChannel;
+let api: AiReminderApi;
+
 let sessionStartedAt: number | undefined;
 let currentWorkspace: string | undefined;
 
@@ -23,8 +25,7 @@ function logActivity(
 }
 
 function getWorkspaceName(): string | undefined {
-  const folder = vscode.workspace.workspaceFolders?.[0];
-  return folder?.name;
+  return vscode.workspace.workspaceFolders?.[0]?.name;
 }
 
 function startSession(): void {
@@ -49,6 +50,8 @@ function endSession(): void {
 
 export function activate(context: vscode.ExtensionContext): void {
   output = vscode.window.createOutputChannel("AI Reminder");
+  api = new AiReminderApi(context.secrets, output);
+
   context.subscriptions.push(output);
 
   output.appendLine("AI Reminder activity tracking activated.");
@@ -76,13 +79,16 @@ export function activate(context: vscode.ExtensionContext): void {
       if (event.contentChanges.length === 0) return;
 
       logActivity("file_edited", {
-        fileName: event.document.fileName.split(/[\\/]/).pop() ?? "unknown",
+        fileName:
+          event.document.fileName.split(/[\\/]/).pop() ?? "unknown",
         changeCount: event.contentChanges.length,
       });
     }),
 
     vscode.window.onDidChangeWindowState((state) => {
-      logActivity(state.focused ? "editor_focused" : "editor_blurred");
+      logActivity(
+        state.focused ? "editor_focused" : "editor_blurred",
+      );
 
       if (state.focused) {
         startSession();
@@ -91,25 +97,56 @@ export function activate(context: vscode.ExtensionContext): void {
       }
     }),
 
-    vscode.commands.registerCommand("aiReminder.showActivity", () => {
-      output.show();
-    }),
+    vscode.commands.registerCommand(
+      "aiReminder.connect",
+      async () => {
+        try {
+          await api.connect();
+        } catch (error) {
+          vscode.window.showErrorMessage(
+            error instanceof Error
+              ? error.message
+              : "Could not connect AI Reminder.",
+          );
+        }
+      },
+    ),
 
-    vscode.commands.registerCommand("aiReminder.endSession", () => {
-      endSession();
-      vscode.window.showInformationMessage(
-        "AI Reminder: work session ended.",
-      );
-    }),
-  );
+    vscode.commands.registerCommand(
+      "aiReminder.disconnect",
+      async () => {
+        await api.disconnect();
+      },
+    ),
 
-  context.subscriptions.push(
-    vscode.commands.registerCommand("aiReminder.startSession", () => {
-      startSession();
-      vscode.window.showInformationMessage(
-        "AI Reminder: work session started.",
-      );
-    }),
+    vscode.commands.registerCommand(
+      "aiReminder.showActivity",
+      () => {
+        output.show();
+      },
+    ),
+
+    vscode.commands.registerCommand(
+      "aiReminder.startSession",
+      () => {
+        startSession();
+
+        vscode.window.showInformationMessage(
+          "AI Reminder: work session started.",
+        );
+      },
+    ),
+
+    vscode.commands.registerCommand(
+      "aiReminder.endSession",
+      () => {
+        endSession();
+
+        vscode.window.showInformationMessage(
+          "AI Reminder: work session ended.",
+        );
+      },
+    ),
   );
 
   context.subscriptions.push({

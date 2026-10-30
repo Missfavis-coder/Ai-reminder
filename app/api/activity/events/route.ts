@@ -1,6 +1,6 @@
-
 import { NextRequest, NextResponse } from "next/server";
 import { ZodError } from "zod";
+
 import { WorkspaceNotFoundError } from "@/lib/server/error";
 import {
   activityEventSchema,
@@ -10,11 +10,30 @@ import { processActivityEvent } from
   "@/lib/server/activity/event-processor";
 import { getCurrentUserId } from
   "@/lib/server/auth/session";
+import { getUserIdFromExtensionToken } from
+  "@/lib/server/auth/extension-token";
 
+async function authenticateRequest(
+  request: NextRequest,
+): Promise<string | null> {
+  const authorization = request.headers.get("authorization");
+
+  if (authorization) {
+    const match = authorization.match(/^Bearer ([^\s]+)$/i);
+
+    if (!match) {
+      return null;
+    }
+
+    return getUserIdFromExtensionToken(match[1]);
+  }
+
+  return getCurrentUserId();
+}
 
 export async function POST(request: NextRequest) {
   try {
-    const userId = await getCurrentUserId();
+    const userId = await authenticateRequest(request);
 
     if (!userId) {
       return NextResponse.json(
@@ -46,37 +65,33 @@ export async function POST(request: NextRequest) {
     });
 
     return NextResponse.json(result, { status: 202 });
-  
-} catch (error) {
-  if (error instanceof WorkspaceNotFoundError) {
+  } catch (error) {
+    if (error instanceof WorkspaceNotFoundError) {
+      return NextResponse.json(
+        { error: "Workspace not found." },
+        { status: 404 },
+      );
+    }
+
+    if (error instanceof ZodError) {
+      return NextResponse.json(
+        {
+          error: "Invalid activity event.",
+          issues: error.issues,
+        },
+        { status: 400 },
+      );
+    }
+
+    console.error("Activity event processing failed.", {
+      name: error instanceof Error
+        ? error.name
+        : "UnknownError",
+    });
+
     return NextResponse.json(
-      { error: "Workspace not found." },
-      { status: 404 },
+      { error: "Could not process activity event." },
+      { status: 500 },
     );
   }
-
-  if (error instanceof ZodError) {
-    return NextResponse.json(
-      {
-        error: "Invalid activity event.",
-        issues: error.issues,
-      },
-      { status: 400 },
-    );
-  }
-
-  // Log the error details without logging request bodies or credentials.
-  console.error("Activity event processing failed.", {
-    name: error instanceof Error ? error.name : "UnknownError",
-    message:
-      error instanceof Error ? error.message : "Unknown error",
-    stack: error instanceof Error ? error.stack : undefined,
-  });
-
-  return NextResponse.json(
-    { error: "Could not process activity event." },
-    { status: 500 },
-  );
-};
-
 }
