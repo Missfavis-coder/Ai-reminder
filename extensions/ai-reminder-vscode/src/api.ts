@@ -8,12 +8,62 @@ export interface RegisteredWorkspace {
     name: string;
     provider: "vscode";
   }
+
+  export interface ActivityEventInput {
+    eventId: string;
+    workspaceId: string;
+    eventType:
+      | "workspace_focused"
+      | "workspace_blurred"
+      | "editor_changed"
+      | "heartbeat"
+      | "workspace_stopped"
+      | "idle_started"
+      | "idle_ended";
+    occurredAt: string;
+    metadata?: Record<string, unknown>;
+  }
 export class AiReminderApi {
   constructor(
     private readonly secrets: vscode.SecretStorage,
     private readonly output: vscode.OutputChannel,
   ) {}
 
+  async sendActivity(
+    event: Omit<ActivityEventInput, "workspaceId">,
+  ): Promise<void> {
+    const token = await this.getToken();
+    const apiUrl = await this.getApiUrl();
+    const workspaceId = await this.getWorkspaceId();
+  
+    if (!token || !apiUrl) {
+      throw new Error("Connect your AI Reminder account first.");
+    }
+  
+    if (!workspaceId) {
+      throw new Error(
+        "No registered workspace found. Register your workspace first.",
+      );
+    }
+  
+    const response = await fetch(`${apiUrl}/api/activity/events`, {
+      method: "POST",
+      headers: {
+        Authorization: `Bearer ${token}`,
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({
+        ...event,
+        workspaceId,
+      }),
+    });
+  
+    if (!response.ok) {
+      throw new Error(
+        `Activity submission failed: HTTP ${response.status}`,
+      );
+    }
+  }
   async registerWorkspace(
     name: string,
     deviceId: string,
