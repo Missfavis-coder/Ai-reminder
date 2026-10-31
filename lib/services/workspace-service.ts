@@ -24,4 +24,13 @@ export const workspacesService = {
 
     return response.workspace;
   },
+
+  async disconnect(workspaceId: string) {
+    const response = await apiClient.patch<WorkspaceResponse>(
+      `/api/workspaces/${workspaceId}`,
+      { status: "disconnected" },
+    );
+
+    return response.workspace;
+  },
 };

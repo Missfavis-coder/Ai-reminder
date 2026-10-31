@@ -45,6 +45,7 @@
       "command": "aiReminder.disconnect",
       "title": "AI Reminder: Disconnect Account"
     }
+    
   ]
 }
 }
