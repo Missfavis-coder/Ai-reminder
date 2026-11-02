@@ -25,6 +25,7 @@ import {
   PiSparkleBold,
   PiUserBold,
   PiXBold,
+  PiPlugsConnected,
 } from "react-icons/pi";
 
 import {
@@ -65,13 +66,19 @@ const navMain = [
       {
         title: "Integration",
         url: "/integrations",
-        icon: PiChartBar,
+        icon: PiPlugsConnected,
       },
       {
         title: "Goals",
         url: "/goals",
         icon: PiFlag,
       },
+      {
+        title: "Activity",
+        url: "/activity",
+        icon: PiChartBar,
+      },     
+
       {
         title: "Reminders",
         url: "/reminders",

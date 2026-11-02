@@ -146,6 +146,10 @@ export class AiReminderApi {
     return this.secrets.get(API_URL_KEY);
   }
 
+  async clearWorkspaceId(): Promise<void> {
+    await this.secrets.delete("aiReminder.workspaceId");
+  }
+
   async connect(): Promise<void> {
     const apiUrl = await vscode.window.showInputBox({
       title: "Connect AI Reminder",
@@ -194,11 +198,12 @@ export class AiReminderApi {
 
   async disconnect(): Promise<void> {
     await this.clearToken();
-
+    await this.clearWorkspaceId();
+  
     vscode.window.showInformationMessage(
       "AI Reminder extension disconnected.",
     );
-
-    this.output.appendLine("Extension token removed.");
+  
+    this.output.appendLine("Extension credentials and workspace ID removed.");
   }
 }

@@ -1,4 +1,3 @@
-
 import * as vscode from "vscode";
 import { randomUUID } from "node:crypto";
 import { AiReminderApi } from "./api";
@@ -41,16 +40,21 @@ function sendActivity(
   });
 }
 
-function getWorkspaceName(): string | undefined {
-  return vscode.workspace.workspaceFolders?.[0]?.name;
-}
-
 async function registerCurrentWorkspace(): Promise<void> {
   const folder = vscode.workspace.workspaceFolders?.[0];
 
   if (!folder) {
     workspaceReady = false;
     currentWorkspace = undefined;
+    return;
+  }
+
+  const token = await api.getToken();
+  const apiUrl = await api.getApiUrl();
+
+  if (!token || !apiUrl) {
+    workspaceReady = false;
+    log("Workspace registration skipped: extension is not connected.");
     return;
   }
 
@@ -102,6 +106,15 @@ function endSession(): void {
   log(`Activity session ended (${durationSeconds}s).`);
 }
 
+async function completeConnection(apiUrl: string): Promise<void> {
+  await api.connect(apiUrl);
+  await registerCurrentWorkspace();
+
+  if (vscode.window.state.focused) {
+    startSession();
+  }
+}
+
 export async function activate(
   context: vscode.ExtensionContext,
 ): Promise<void> {
@@ -112,6 +125,7 @@ export async function activate(
 
   log("AI Reminder activity tracking activated.");
 
+  // Register the workspace only when credentials already exist.
   await registerCurrentWorkspace();
 
   if (vscode.window.state.focused) {
@@ -119,6 +133,41 @@ export async function activate(
   }
 
   context.subscriptions.push(
+    vscode.window.registerUriHandler({
+      handleUri: async (uri: vscode.Uri) => {
+        if (uri.path !== "/connect") {
+          return;
+        }
+
+        const apiUrl = uri.query
+          ? new URLSearchParams(uri.query).get("apiUrl")
+          : null;
+
+        if (!apiUrl) {
+          vscode.window.showErrorMessage(
+            "The AI Reminder connection link is missing its website address.",
+          );
+          return;
+        }
+
+        try {
+          await completeConnection(apiUrl);
+        } catch (error) {
+          vscode.window.showErrorMessage(
+            error instanceof Error
+              ? error.message
+              : "Could not connect to AI Reminder.",
+          );
+
+          log(
+            `Connection failed: ${
+              error instanceof Error ? error.message : "Unknown error"
+            }`,
+          );
+        }
+      },
+    }),
+
     vscode.workspace.onDidChangeWorkspaceFolders(async () => {
       endSession();
       await registerCurrentWorkspace();
@@ -129,13 +178,17 @@ export async function activate(
     }),
 
     vscode.commands.registerCommand("aiReminder.connect", async () => {
+      const apiUrl = await api.getApiUrl();
+
+      if (!apiUrl) {
+        vscode.window.showInformationMessage(
+          "Start the connection from Integrations on the AI Reminder website.",
+        );
+        return;
+      }
+
       try {
-        await api.connect();
-        await registerCurrentWorkspace();
-    
-        if (vscode.window.state.focused) {
-          startSession();
-        }
+        await completeConnection(apiUrl);
       } catch (error) {
         vscode.window.showErrorMessage(
           error instanceof Error
@@ -144,7 +197,7 @@ export async function activate(
         );
       }
     }),
-    
+
     vscode.commands.registerCommand("aiReminder.disconnect", async () => {
       endSession();
       workspaceReady = false;
@@ -156,7 +209,8 @@ export async function activate(
       if (event.contentChanges.length === 0) return;
 
       sendActivity("editor_changed", {
-        fileName: event.document.fileName.split(/[\\/]/).pop() ?? "unknown",
+        fileName:
+          event.document.fileName.split(/[\\/]/).pop() ?? "unknown",
         changeCount: event.contentChanges.length,
       });
     }),
