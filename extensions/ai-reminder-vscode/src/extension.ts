@@ -26,18 +26,22 @@ function sendActivity(
     return;
   }
 
-  void api.sendActivity({
-    eventId: randomUUID(),
-    eventType,
-    occurredAt: new Date().toISOString(),
-    metadata,
-  }).catch((error: unknown) => {
-    log(
-      `Activity submission failed (${eventType}): ${
-        error instanceof Error ? error.message : "Unknown error"
-      }`,
-    );
-  });
+  void api
+    .sendActivity({
+      eventId: randomUUID(),
+      eventType,
+      occurredAt: new Date().toISOString(),
+      metadata,
+    })
+    .catch((error: unknown) => {
+      log(
+        `Activity submission failed (${eventType}): ${
+          error instanceof Error
+            ? error.message
+            : "Unknown error"
+        }`,
+      );
+    });
 }
 
 async function registerCurrentWorkspace(): Promise<void> {
@@ -54,7 +58,9 @@ async function registerCurrentWorkspace(): Promise<void> {
 
   if (!token || !apiUrl) {
     workspaceReady = false;
-    log("Workspace registration skipped: extension is not connected.");
+    log(
+      "Workspace registration skipped: extension is not connected.",
+    );
     return;
   }
 
@@ -68,13 +74,18 @@ async function registerCurrentWorkspace(): Promise<void> {
     );
 
     await api.saveWorkspaceId(workspace.id);
+
     workspaceReady = true;
 
-    log(`Workspace registered: ${workspace.name} (${workspace.id})`);
+    log(
+      `Workspace registered: ${workspace.name} (${workspace.id})`,
+    );
   } catch (error) {
     log(
       `Workspace registration failed: ${
-        error instanceof Error ? error.message : "Unknown error"
+        error instanceof Error
+          ? error.message
+          : "Unknown error"
       }`,
     );
   }
@@ -88,6 +99,7 @@ function startSession(): void {
   sessionStartedAt = Date.now();
 
   sendActivity("workspace_focused");
+
   log("Activity session started.");
 }
 
@@ -100,14 +112,24 @@ function endSession(): void {
     (Date.now() - sessionStartedAt) / 1000,
   );
 
-  sendActivity("workspace_stopped", { durationSeconds });
+  sendActivity("workspace_stopped", {
+    durationSeconds,
+  });
 
   sessionStartedAt = undefined;
+
   log(`Activity session ended (${durationSeconds}s).`);
 }
 
 async function completeConnection(apiUrl: string): Promise<void> {
-  await api.connect(apiUrl);
+  const deviceName = vscode.workspace.name || "VS Code";
+
+  await api.connect(
+    apiUrl,
+    deviceName,
+    vscode.env.machineId,
+  );
+
   await registerCurrentWorkspace();
 
   if (vscode.window.state.focused) {
@@ -119,6 +141,7 @@ export async function activate(
   context: vscode.ExtensionContext,
 ): Promise<void> {
   output = vscode.window.createOutputChannel("AI Reminder");
+
   context.subscriptions.push(output);
 
   api = new AiReminderApi(context.secrets, output);
@@ -161,56 +184,78 @@ export async function activate(
 
           log(
             `Connection failed: ${
-              error instanceof Error ? error.message : "Unknown error"
+              error instanceof Error
+                ? error.message
+                : "Unknown error"
             }`,
           );
         }
       },
     }),
 
-    vscode.workspace.onDidChangeWorkspaceFolders(async () => {
-      endSession();
-      await registerCurrentWorkspace();
+    vscode.workspace.onDidChangeWorkspaceFolders(
+      async () => {
+        endSession();
 
-      if (vscode.window.state.focused) {
-        startSession();
-      }
-    }),
+        await registerCurrentWorkspace();
 
-    vscode.commands.registerCommand("aiReminder.connect", async () => {
-      const apiUrl = await api.getApiUrl();
+        if (vscode.window.state.focused) {
+          startSession();
+        }
+      },
+    ),
 
-      if (!apiUrl) {
-        vscode.window.showInformationMessage(
-          "Start the connection from Integrations on the AI Reminder website.",
-        );
+    vscode.commands.registerCommand(
+      "aiReminder.connect",
+      async () => {
+        const apiUrl = await api.getApiUrl();
+
+        if (!apiUrl) {
+          vscode.window.showInformationMessage(
+            "Start the connection from Integrations on the AI Reminder website.",
+          );
+          return;
+        }
+
+        try {
+          await registerCurrentWorkspace();
+
+          if (vscode.window.state.focused) {
+            startSession();
+          }
+        } catch (error) {
+          vscode.window.showErrorMessage(
+            error instanceof Error
+              ? error.message
+              : "Could not connect to AI Reminder.",
+          );
+        }
+      },
+    ),
+
+    vscode.commands.registerCommand(
+      "aiReminder.disconnect",
+      async () => {
+        endSession();
+        workspaceReady = false;
+
+        await api.disconnect();
+      },
+    ),
+
+    vscode.workspace.onDidChangeTextDocument((event) => {
+      if (event.document.uri.scheme !== "file") {
         return;
       }
 
-      try {
-        await completeConnection(apiUrl);
-      } catch (error) {
-        vscode.window.showErrorMessage(
-          error instanceof Error
-            ? error.message
-            : "Could not connect to AI Reminder.",
-        );
+      if (event.contentChanges.length === 0) {
+        return;
       }
-    }),
-
-    vscode.commands.registerCommand("aiReminder.disconnect", async () => {
-      endSession();
-      workspaceReady = false;
-      await api.disconnect();
-    }),
-
-    vscode.workspace.onDidChangeTextDocument((event) => {
-      if (event.document.uri.scheme !== "file") return;
-      if (event.contentChanges.length === 0) return;
 
       sendActivity("editor_changed", {
         fileName:
-          event.document.fileName.split(/[\\/]/).pop() ?? "unknown",
+          event.document.fileName.split(/[\\/]/).pop() ??
+          "unknown",
         changeCount: event.contentChanges.length,
       });
     }),
@@ -224,17 +269,26 @@ export async function activate(
       }
     }),
 
-    vscode.commands.registerCommand("aiReminder.showActivity", () => {
-      output.show();
-    }),
+    vscode.commands.registerCommand(
+      "aiReminder.showActivity",
+      () => {
+        output.show();
+      },
+    ),
 
-    vscode.commands.registerCommand("aiReminder.startSession", () => {
-      startSession();
-    }),
+    vscode.commands.registerCommand(
+      "aiReminder.startSession",
+      () => {
+        startSession();
+      },
+    ),
 
-    vscode.commands.registerCommand("aiReminder.endSession", () => {
-      endSession();
-    }),
+    vscode.commands.registerCommand(
+      "aiReminder.endSession",
+      () => {
+        endSession();
+      },
+    ),
 
     {
       dispose: () => endSession(),

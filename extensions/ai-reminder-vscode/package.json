@@ -22,31 +22,31 @@
   "devDependencies": {
     "@types/node": "^22.20.5",
     "@types/vscode": "^1.85.0",
+    "@vscode/vsce": "^4.1.0",
     "typescript": "^5.7.0"
   },
   "contributes": {
-  "commands": [
-    {
-      "command": "aiReminder.showActivity",
-      "title": "AI Reminder: Show Activity"
-    },
-    {
-      "command": "aiReminder.startSession",
-      "title": "AI Reminder: Start Session"
-    },
-    {
-      "command": "aiReminder.endSession",
-      "title": "AI Reminder: End Session"
-    },
-    {
-      "command": "aiReminder.connect",
-      "title": "AI Reminder: Connect Account"
-    },
-    {
-      "command": "aiReminder.disconnect",
-      "title": "AI Reminder: Disconnect Account"
-    }
-    
-  ]
-}
+    "commands": [
+      {
+        "command": "aiReminder.showActivity",
+        "title": "AI Reminder: Show Activity"
+      },
+      {
+        "command": "aiReminder.startSession",
+        "title": "AI Reminder: Start Session"
+      },
+      {
+        "command": "aiReminder.endSession",
+        "title": "AI Reminder: End Session"
+      },
+      {
+        "command": "aiReminder.connect",
+        "title": "AI Reminder: Connect Account"
+      },
+      {
+        "command": "aiReminder.disconnect",
+        "title": "AI Reminder: Disconnect Account"
+      }
+    ]
+  }
 }
