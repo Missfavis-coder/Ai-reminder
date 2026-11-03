@@ -3,7 +3,7 @@ import { createHash, randomBytes } from "node:crypto";
 
 const TOKEN_KEY = "aiReminder.extensionToken";
 const API_URL_KEY = "aiReminder.apiUrl";
-const WORKSPACE_ID_KEY = "aiReminder.workspaceId";
+const WORKSPACE_IDS_KEY = "aiReminder.workspaceIds";
 
 interface ExtensionAuthRequestResponse {
   requestId: string;
@@ -203,22 +203,20 @@ export class AiReminderApi {
   }
 
   async sendActivity(
+    workspaceId: string,
     event: Omit<ActivityEventInput, "workspaceId">,
   ): Promise<void> {
     const token = await this.getToken();
     const apiUrl = await this.getApiUrl();
-    const workspaceId = await this.getWorkspaceId();
-
+  
     if (!token || !apiUrl) {
       throw new Error("Connect your AI Reminder account first.");
     }
-
+  
     if (!workspaceId) {
-      throw new Error(
-        "No registered workspace found. Register your workspace first.",
-      );
+      throw new Error("Workspace ID is required.");
     }
-
+  
     const response = await fetch(
       `${apiUrl}/api/activity/events`,
       {
@@ -227,17 +225,19 @@ export class AiReminderApi {
           Authorization: `Bearer ${token}`,
           "Content-Type": "application/json",
         },
-        body: JSON.stringify({ ...event, workspaceId }),
+        body: JSON.stringify({
+          ...event,
+          workspaceId,
+        }),
       },
     );
-
+  
     if (!response.ok) {
       throw new Error(
         `Activity submission failed: HTTP ${response.status}`,
       );
     }
   }
-
   async registerWorkspace(
     name: string,
     deviceId: string,
@@ -280,13 +280,73 @@ export class AiReminderApi {
 
     return data.workspace;
   }
-
-  async saveWorkspaceId(workspaceId: string): Promise<void> {
-    await this.secrets.store(WORKSPACE_ID_KEY, workspaceId);
+  async saveWorkspaceId(
+    workspaceKey: string,
+    workspaceId: string,
+  ): Promise<void> {
+    const stored = await this.secrets.get(WORKSPACE_IDS_KEY);
+  
+    let workspaceIds: Record<string, string> = {};
+  
+    if (stored) {
+      try {
+        workspaceIds = JSON.parse(stored) as Record<string, string>;
+      } catch {
+        workspaceIds = {};
+      }
+    }
+  
+    workspaceIds[workspaceKey] = workspaceId;
+  
+    await this.secrets.store(
+      WORKSPACE_IDS_KEY,
+      JSON.stringify(workspaceIds),
+    );
   }
-
-  async getWorkspaceId(): Promise<string | undefined> {
-    return this.secrets.get(WORKSPACE_ID_KEY);
+  
+  async getWorkspaceId(
+    workspaceKey: string,
+  ): Promise<string | undefined> {
+    const stored = await this.secrets.get(WORKSPACE_IDS_KEY);
+  
+    if (!stored) {
+      return undefined;
+    }
+  
+    try {
+      const workspaceIds = JSON.parse(stored) as Record<string, string>;
+      return workspaceIds[workspaceKey];
+    } catch {
+      return undefined;
+    }
+  }
+  
+  async clearWorkspaceId(
+    workspaceKey?: string,
+  ): Promise<void> {
+    if (!workspaceKey) {
+      await this.secrets.delete(WORKSPACE_IDS_KEY);
+      return;
+    }
+  
+    const stored = await this.secrets.get(WORKSPACE_IDS_KEY);
+  
+    if (!stored) {
+      return;
+    }
+  
+    try {
+      const workspaceIds = JSON.parse(stored) as Record<string, string>;
+  
+      delete workspaceIds[workspaceKey];
+  
+      await this.secrets.store(
+        WORKSPACE_IDS_KEY,
+        JSON.stringify(workspaceIds),
+      );
+    } catch {
+      await this.secrets.delete(WORKSPACE_IDS_KEY);
+    }
   }
 
   async getToken(): Promise<string | undefined> {
@@ -301,13 +361,9 @@ export class AiReminderApi {
     await this.secrets.delete(TOKEN_KEY);
   }
 
-  async clearWorkspaceId(): Promise<void> {
-    await this.secrets.delete(WORKSPACE_ID_KEY);
-  }
-
   async disconnect(): Promise<void> {
     await this.clearToken();
-    await this.clearWorkspaceId();
+    await this.clearWorkspaceId(API_URL_KEY);
     await this.secrets.delete(API_URL_KEY);
 
     vscode.window.showInformationMessage(

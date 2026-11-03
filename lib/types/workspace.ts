@@ -8,6 +8,7 @@ export interface Workspace {
   provider: WorkspaceProvider;
   name: string;
   deviceId: string | null;
+  monitoringEnabled: boolean;
   status: WorkspaceStatus;
   lastSeenAt: string | null;
   createdAt: string;

@@ -1,4 +1,3 @@
-
 "use client";
 
 import { useState } from "react";
@@ -6,6 +5,7 @@ import {
   useWorkspaces,
   useCreateWorkspace,
   useDisconnectWorkspace,
+  useUpdateWorkspace,
 } from "@/lib/hooks/use-workspace";
 
 function formatDate(value: string | null) {
@@ -19,6 +19,9 @@ function formatDate(value: string | null) {
 
 export default function WorkspacesPage() {
   const [disconnectingId, setDisconnectingId] = useState<string | null>(null);
+  const [updatingMonitoringId, setUpdatingMonitoringId] = useState<string | null>(
+    null,
+  );
 
   const {
     data: workspaces = [],
@@ -30,9 +33,15 @@ export default function WorkspacesPage() {
 
   const createWorkspace = useCreateWorkspace();
   const disconnectWorkspace = useDisconnectWorkspace();
+  const updateWorkspace = useUpdateWorkspace();
 
   const connected = workspaces.filter(
     (workspace) => workspace.status === "connected",
+  );
+
+  const monitoringEnabled = workspaces.filter(
+    (workspace) =>
+      workspace.status === "connected" && workspace.monitoringEnabled,
   );
 
   const vscodeWorkspaces = workspaces.filter(
@@ -73,6 +82,24 @@ export default function WorkspacesPage() {
     }
   }
 
+  async function handleMonitoringToggle(
+    workspaceId: string,
+    currentValue: boolean,
+  ) {
+    setUpdatingMonitoringId(workspaceId);
+
+    try {
+      await updateWorkspace.mutateAsync({
+        workspaceId,
+        monitoringEnabled: !currentValue,
+      });
+    } catch {
+      // React Query exposes the error through the mutation state.
+    } finally {
+      setUpdatingMonitoringId(null);
+    }
+  }
+
   return (
     <main className="space-y-8 p-6">
       <header className="flex flex-col justify-between gap-4 sm:flex-row sm:items-center">
@@ -80,6 +107,7 @@ export default function WorkspacesPage() {
           <h1 className="text-2xl font-semibold tracking-tight">
             Workspaces
           </h1>
+
           <p className="mt-2 text-sm text-muted-foreground">
             Manage the devices and environments connected to AI Reminder.
           </p>
@@ -110,10 +138,19 @@ export default function WorkspacesPage() {
         </p>
       )}
 
-      <section className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
+      {updateWorkspace.isError && (
+        <p className="text-sm text-destructive">
+          {updateWorkspace.error instanceof Error
+            ? updateWorkspace.error.message
+            : "Could not update workspace monitoring. Please try again."}
+        </p>
+      )}
+
+      <section className="grid gap-4 sm:grid-cols-2 xl:grid-cols-5">
         {[
           { label: "Total workspaces", value: workspaces.length },
           { label: "Connected", value: connected.length },
+          { label: "Monitoring enabled", value: monitoringEnabled.length },
           { label: "VS Code", value: vscodeWorkspaces.length },
           { label: "Browser", value: browserWorkspaces.length },
         ].map((item) => (
@@ -128,6 +165,7 @@ export default function WorkspacesPage() {
         <div className="flex items-center justify-between">
           <div>
             <h2 className="text-lg font-semibold">Your workspaces</h2>
+
             <p className="text-sm text-muted-foreground">
               View and manage your connected environments.
             </p>
@@ -148,9 +186,13 @@ export default function WorkspacesPage() {
         ) : isError ? (
           <div className="rounded-xl border p-10 text-center">
             <p className="font-medium">Unable to load workspaces.</p>
+
             <p className="mt-2 text-sm text-muted-foreground">
-              {error instanceof Error ? error.message : "Something went wrong."}
+              {error instanceof Error
+                ? error.message
+                : "Something went wrong."}
             </p>
+
             <button
               onClick={() => refetch()}
               className="mt-4 rounded-lg border px-4 py-2 text-sm"
@@ -161,6 +203,7 @@ export default function WorkspacesPage() {
         ) : workspaces.length === 0 ? (
           <div className="rounded-xl border border-dashed p-10 text-center">
             <h3 className="font-semibold">No workspaces connected</h3>
+
             <p className="mx-auto mt-2 max-w-md text-sm text-muted-foreground">
               Connect a browser workspace or install the AI Reminder VS Code
               extension to get started.
@@ -168,62 +211,121 @@ export default function WorkspacesPage() {
           </div>
         ) : (
           <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-3">
-            {workspaces.map((workspace) => (
-              <article key={workspace.id} className="rounded-xl border p-5">
-                <div className="flex items-start justify-between gap-3">
-                  <div>
-                    <h3 className="font-semibold">{workspace.name}</h3>
-                    <p className="mt-1 text-xs capitalize text-muted-foreground">
-                      {workspace.provider} workspace
-                    </p>
-                  </div>
+            {workspaces.map((workspace) => {
+              const isUpdating =
+                updatingMonitoringId === workspace.id;
 
-                  <span
-                    className={`rounded-full px-2.5 py-1 text-xs ${
-                      workspace.status === "connected"
-                        ? "bg-green-500/10 text-green-600"
-                        : "bg-muted text-muted-foreground"
-                    }`}
-                  >
-                    {workspace.status}
-                  </span>
-                </div>
+              const isConnected = workspace.status === "connected";
 
-                <div className="mt-6 space-y-3 text-sm">
-                  <div className="flex justify-between gap-3">
-                    <span className="text-muted-foreground">Last seen</span>
-                    <span className="text-right">
-                      {formatDate(workspace.lastSeenAt)}
-                    </span>
-                  </div>
+              return (
+                <article
+                  key={workspace.id}
+                  className="rounded-xl border p-5"
+                >
+                  <div className="flex items-start justify-between gap-3">
+                    <div className="min-w-0">
+                      <h3 className="truncate font-semibold">
+                        {workspace.name}
+                      </h3>
 
-                  <div className="flex justify-between gap-3">
-                    <span className="text-muted-foreground">Created</span>
-                    <span className="text-right">
-                      {formatDate(workspace.createdAt)}
-                    </span>
-                  </div>
-                </div>
+                      <p className="mt-1 text-xs capitalize text-muted-foreground">
+                        {workspace.provider} workspace
+                      </p>
+                    </div>
 
-                <div className="mt-5 border-t pt-4">
-                  <p className="truncate text-xs text-muted-foreground">
-                    ID: {workspace.id}
-                  </p>
-
-                  {workspace.status === "connected" && (
-                    <button
-                      onClick={() => handleDisconnect(workspace.id)}
-                      disabled={disconnectingId === workspace.id}
-                      className="mt-4 w-full rounded-lg border border-destructive/30 px-3 py-2 text-sm text-destructive hover:bg-destructive/5 disabled:opacity-50"
+                    <span
+                      className={`shrink-0 rounded-full px-2.5 py-1 text-xs ${
+                        isConnected
+                          ? "bg-green-500/10 text-green-600"
+                          : "bg-muted text-muted-foreground"
+                      }`}
                     >
-                      {disconnectingId === workspace.id
-                        ? "Disconnecting..."
-                        : "Disconnect workspace"}
+                      {workspace.status}
+                    </span>
+                  </div>
+
+                  <div className="mt-4">
+                    <div
+                      className={`inline-flex items-center gap-2 rounded-full px-3 py-1.5 text-xs font-medium ${
+                        workspace.monitoringEnabled && isConnected
+                          ? "bg-green-500/10 text-green-600"
+                          : "bg-muted text-muted-foreground"
+                      }`}
+                    >
+                      <span
+                        className={`size-2 rounded-full ${
+                          workspace.monitoringEnabled && isConnected
+                            ? "bg-green-500"
+                            : "bg-muted-foreground"
+                        }`}
+                      />
+
+                      {workspace.monitoringEnabled && isConnected
+                        ? "Monitoring enabled"
+                        : "Monitoring paused"}
+                    </div>
+                  </div>
+
+                  <div className="mt-6 space-y-3 text-sm">
+                    <div className="flex justify-between gap-3">
+                      <span className="text-muted-foreground">Last seen</span>
+
+                      <span className="text-right">
+                        {formatDate(workspace.lastSeenAt)}
+                      </span>
+                    </div>
+
+                    <div className="flex justify-between gap-3">
+                      <span className="text-muted-foreground">Created</span>
+
+                      <span className="text-right">
+                        {formatDate(workspace.createdAt)}
+                      </span>
+                    </div>
+                  </div>
+
+                  <div className="mt-5 border-t pt-4">
+                    <p className="truncate text-xs text-muted-foreground">
+                      ID: {workspace.id}
+                    </p>
+
+                    <button
+                      type="button"
+                      onClick={() =>
+                        handleMonitoringToggle(
+                          workspace.id,
+                          workspace.monitoringEnabled,
+                        )
+                      }
+                      disabled={!isConnected || isUpdating}
+                      className={`mt-4 w-full rounded-lg px-3 py-2 text-sm font-medium transition disabled:cursor-not-allowed disabled:opacity-50 ${
+                        workspace.monitoringEnabled
+                          ? "border border-border hover:bg-muted"
+                          : "bg-primary text-primary-foreground hover:opacity-90"
+                      }`}
+                    >
+                      {isUpdating
+                        ? "Updating..."
+                        : workspace.monitoringEnabled
+                          ? "Pause monitoring"
+                          : "Start monitoring"}
                     </button>
-                  )}
-                </div>
-              </article>
-            ))}
+
+                    {workspace.status === "connected" && (
+                      <button
+                        onClick={() => handleDisconnect(workspace.id)}
+                        disabled={disconnectingId === workspace.id}
+                        className="mt-2 w-full rounded-lg border border-destructive/30 px-3 py-2 text-sm text-destructive hover:bg-destructive/5 disabled:opacity-50"
+                      >
+                        {disconnectingId === workspace.id
+                          ? "Disconnecting..."
+                          : "Disconnect workspace"}
+                      </button>
+                    )}
+                  </div>
+                </article>
+              );
+            })}
           </div>
         )}
       </section>

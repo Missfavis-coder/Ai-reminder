@@ -1,13 +1,11 @@
-
 import { NextRequest, NextResponse } from "next/server";
 import { and, desc, eq } from "drizzle-orm";
 import { ZodError, z } from "zod";
 
-import { getUserIdFromExtensionToken } from
-  "@/lib/server/auth/extension-token";
+import { getUserIdFromExtensionToken } from "@/lib/server/auth/extension-token";
+import { getCurrentUserId } from "@/lib/server/auth/session";
 import { db } from "@/lib/server/db";
 import { workspaces } from "@/lib/server/db/schema";
-import { getCurrentUserId } from "@/lib/server/auth/session";
 
 const createWorkspaceSchema = z.object({
   provider: z.enum(["browser", "vscode"]),
@@ -49,8 +47,8 @@ export async function GET() {
       .orderBy(desc(workspaces.createdAt));
 
     return NextResponse.json({ workspaces: items });
-  } catch {
-    console.error("Failed to list workspaces.");
+  } catch (error) {
+    console.error("Failed to list workspaces:", error);
 
     return NextResponse.json(
       { error: "Could not load workspaces." },
@@ -143,7 +141,7 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    console.error("Failed to create workspace.");
+    console.error("Failed to create workspace:", error);
 
     return NextResponse.json(
       { error: "Could not create workspace." },
