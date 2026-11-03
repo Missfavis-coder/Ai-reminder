@@ -1,13 +1,14 @@
-
 import { NextRequest, NextResponse } from "next/server";
-import { eq, and } from "drizzle-orm";
+import { and, eq } from "drizzle-orm";
 
 import { db } from "@/lib/server/db";
 import { workspaces } from "@/lib/server/db/schema";
 import { getCurrentUserId } from "@/lib/server/auth/session";
 import { getUserIdFromExtensionToken } from "@/lib/server/auth/extension-token";
 
-async function authenticateRequest(request: NextRequest) {
+async function authenticateRequest(
+  request: NextRequest,
+): Promise<string | null> {
   const authorization = request.headers.get("authorization");
 
   if (authorization) {
@@ -22,23 +23,26 @@ async function authenticateRequest(request: NextRequest) {
 
 export async function PATCH(
   request: NextRequest,
-  { params }: { params: Promise<{ workspaceId: string }> },
+  { params }: { params: Promise<{ id: string }> },
 ) {
   try {
     const userId = await authenticateRequest(request);
 
     if (!userId) {
-      return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+      return NextResponse.json(
+        { error: "Unauthorized" },
+        { status: 401 },
+      );
     }
 
-    const { workspaceId } = await params;
+    const { id } = await params;
 
     const [workspace] = await db
       .update(workspaces)
       .set({ status: "disconnected" })
       .where(
         and(
-          eq(workspaces.id, workspaceId),
+          eq(workspaces.id, id),
           eq(workspaces.userId, userId),
         ),
       )

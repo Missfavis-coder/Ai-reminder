@@ -98,7 +98,7 @@ export default function IntegrationsPage() {
   const [search, setSearch] = useState("");
   const [provider, setProvider] = useState<Provider>("vscode");
   const [workspaceName, setWorkspaceName] = useState("");
-
+  const [showVSCodeModal, setShowVSCodeModal] = useState(false);
   const [phoneNumber, setPhoneNumber] = useState("");
   const [verificationCode, setVerificationCode] = useState("");
   const [consent, setConsent] = useState(false);
@@ -133,23 +133,44 @@ export default function IntegrationsPage() {
       channel.consentGrantedAt,
   );
 
+  const connectVSCode = () => {
+    setShowVSCodeModal(true);
+  };
+  
+  const openVSCode = () => {
+    const apiUrl = window.location.origin;
+  
+    const vscodeUri =
+      `vscode://ai-reminder.ai-reminder-vscode/connect?apiUrl=${encodeURIComponent(apiUrl)}`;
+  
+    window.location.href = vscodeUri;
+    setShowVSCodeModal(false);
+  };
+  
   async function handleConnectWorkspace(
     event: React.FormEvent<HTMLFormElement>,
   ) {
     event.preventDefault();
-
+  
+    // VS Code uses the browser-based authorization flow.
+    if (provider === "vscode") {
+      connectVSCode();
+      return;
+    }
+  
+    // Browser workspaces keep the existing registration flow.
     const parsed = workspaceSchema.safeParse({
       provider,
       name: workspaceName,
     });
-
+  
     if (!parsed.success) {
       toast.error(
         parsed.error.issues[0]?.message ?? "Invalid workspace.",
       );
       return;
     }
-
+  
     try {
       await createWorkspace.mutateAsync(parsed.data);
       toast.success("Workspace registered successfully.");
@@ -888,6 +909,70 @@ export default function IntegrationsPage() {
             </div>
           </div>
         )}
+
+{showVSCodeModal && (
+  <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 p-4 backdrop-blur-sm">
+    <div className="w-full max-w-md rounded-2xl border bg-background p-6 shadow-2xl">
+      <div className="mb-5 flex items-center justify-between">
+        <div className="flex h-12 w-12 items-center justify-center rounded-xl bg-primary/10">
+          <PiCode className="h-6 w-6 text-primary" />
+        </div>
+
+        <button
+          type="button"
+          onClick={() => setShowVSCodeModal(false)}
+          className="rounded-lg p-2 text-muted-foreground transition hover:bg-muted"
+          aria-label="Close dialog"
+        >
+          ✕
+        </button>
+      </div>
+
+      <h2 className="text-xl font-semibold">
+        Connect VS Code
+      </h2>
+
+      <p className="mt-2 text-sm leading-6 text-muted-foreground">
+        Connect your VS Code environment to AI Reminder to track
+        your development activity and work sessions.
+      </p>
+
+      <div className="mt-5 rounded-xl border bg-muted/40 p-4">
+        <div className="flex items-start gap-3">
+          <PiShieldCheck className="mt-0.5 h-5 w-5 shrink-0 text-primary" />
+
+          <div>
+            <p className="text-sm font-medium">
+              Secure account authorization
+            </p>
+            <p className="mt-1 text-xs leading-5 text-muted-foreground">
+              You'll be redirected to your browser to approve the
+              connection using your AI Reminder account.
+            </p>
+          </div>
+        </div>
+      </div>
+
+      <div className="mt-6 flex flex-col-reverse gap-3 sm:flex-row sm:justify-end">
+        <Button
+          type="button"
+          variant="outline"
+          onClick={() => setShowVSCodeModal(false)}
+        >
+          Cancel
+        </Button>
+
+        <Button
+          type="button"
+          onClick={openVSCode}
+        >
+          <PiCode className="mr-2 h-4 w-4" />
+          Continue to VS Code
+        </Button>
+      </div>
+    </div>
+  </div>
+)}
       </div>
     </main>
   );
