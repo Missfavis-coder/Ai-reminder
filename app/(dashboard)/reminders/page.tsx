@@ -417,9 +417,10 @@ export default function RemindersPage() {
       </header>
 
       {/* Create reminder */}
+      <div className="grid md:grid-cols-2 grid-cols-1 gap-4">
       <section
         id="create-reminder"
-        className="scroll-mt-6 rounded-2xl bg-neutral-100 p-4 shadow-sm sm:p-6"
+        className="max-h-[500px] overflow-y-auto rounded-2xl bg-neutral-100 p-4 shadow-sm sm:p-6"
       >
         <div className="mb-5 flex items-center gap-3">
           <div className="flex h-9 w-9 items-center justify-center rounded-xl bg-primary/10 text-primary">
@@ -689,7 +690,7 @@ export default function RemindersPage() {
                     Connect a channel before creating a reminder.
                   </p>
                   <Button
-                    asChild
+                    
                     variant="outline"
                     size="sm"
                     className="mt-3 h-8"
@@ -841,7 +842,7 @@ export default function RemindersPage() {
         )}
 
         {!isLoading && !isError && rules.length > 0 && (
-          <div className="grid gap-3 md:grid-cols-2">
+          <div className="">
             {rules.map((rule) => {
               const ruleType = reminderTypes.find(
                 (item) => item.value === rule.type,
@@ -852,7 +853,7 @@ export default function RemindersPage() {
               return (
                 <article
                   key={rule.id}
-                  className="rounded-xl border bg-card p-4 transition-colors hover:bg-muted/20"
+                  className="rounded-xl border bg-neutral-100 p-4 transition-colors hover:bg-muted/20"
                 >
                   <div className="flex items-start gap-3">
                     <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-primary/10 text-primary">
@@ -910,6 +911,8 @@ export default function RemindersPage() {
         )}
       </section>
 
+      </div>
+
       {/* Small integrations link */}
       <div className="flex flex-wrap items-center justify-between gap-3 rounded-xl border bg-muted/20 px-4 py-3">
         <div className="flex items-center gap-2">
@@ -919,7 +922,7 @@ export default function RemindersPage() {
           </p>
         </div>
 
-        <Button asChild variant="outline" size="sm" className="h-8">
+        <Button  variant="outline" size="sm" className="h-8">
           <a href="/integrations">Manage integrations</a>
         </Button>
       </div>
