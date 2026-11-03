@@ -1,4 +1,3 @@
-
 "use client";
 
 import {
@@ -8,7 +7,8 @@ import {
 } from "@tanstack/react-query";
 
 import { workspacesService } from "@/lib/services/workspace-service";
-import { CreateWorkspaceInput } from "../types/workspace";
+
+import type { CreateWorkspaceInput } from "@/lib/types/workspace";
 
 export const workspaceKeys = {
   all: ["workspaces"] as const,
@@ -28,6 +28,29 @@ export function useCreateWorkspace() {
   return useMutation({
     mutationFn: (input: CreateWorkspaceInput) =>
       workspacesService.create(input),
+
+    onSuccess: async () => {
+      await queryClient.invalidateQueries({
+        queryKey: workspaceKeys.all,
+      });
+    },
+  });
+}
+
+export function useUpdateWorkspace() {
+  const queryClient = useQueryClient();
+
+  return useMutation({
+    mutationFn: ({
+      workspaceId,
+      monitoringEnabled,
+    }: {
+      workspaceId: string;
+      monitoringEnabled: boolean;
+    }) =>
+      workspacesService.update(workspaceId, {
+        monitoringEnabled,
+      }),
 
     onSuccess: async () => {
       await queryClient.invalidateQueries({

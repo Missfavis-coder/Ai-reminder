@@ -149,7 +149,11 @@ export async function POST(request: NextRequest) {
       userId,
       event,
     });
-
+    
+    if ("ignored" in result && result.ignored) {
+      return NextResponse.json(result, { status: 200 });
+    }
+    
     return NextResponse.json(result, { status: 202 });
   } catch (error) {
     if (error instanceof WorkspaceNotFoundError) {

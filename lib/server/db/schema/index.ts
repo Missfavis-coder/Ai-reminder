@@ -89,23 +89,34 @@ import {
       withTimezone: true,
     }).notNull().defaultNow(),
   });
-  
   export const workspaces = pgTable(
     "workspaces",
     {
       id: uuid("id").defaultRandom().primaryKey(),
+  
       userId: text("user_id")
         .notNull()
         .references(() => users.id, { onDelete: "cascade" }),
+  
       provider: workspaceProviderEnum("provider").notNull(),
+  
       name: varchar("name", { length: 200 }).notNull(),
+  
       deviceId: varchar("device_id", { length: 200 }),
+  
+      // Users must explicitly enable monitoring for each project.
+      monitoringEnabled: boolean("monitoring_enabled")
+        .notNull()
+        .default(false),
+  
       status: workspaceStatusEnum("status")
         .notNull()
         .default("connected"),
+  
       lastSeenAt: timestamp("last_seen_at", {
         withTimezone: true,
       }),
+  
       createdAt: timestamp("created_at", {
         withTimezone: true,
       }).notNull().defaultNow(),

@@ -1,5 +1,5 @@
-
 import { apiClient } from "@/lib/api";
+
 import type {
   CreateWorkspaceInput,
   WorkspaceResponse,
@@ -25,12 +25,24 @@ export const workspacesService = {
     return response.workspace;
   },
 
-  async disconnect(workspaceId: string) {
+  async update(
+    workspaceId: string,
+    input: {
+      monitoringEnabled?: boolean;
+      status?: "connected" | "disconnected";
+    },
+  ) {
     const response = await apiClient.patch<WorkspaceResponse>(
       `/api/workspaces/${workspaceId}`,
-      { status: "disconnected" },
+      input,
     );
 
     return response.workspace;
+  },
+
+  async disconnect(workspaceId: string) {
+    return this.update(workspaceId, {
+      status: "disconnected",
+    });
   },
 };

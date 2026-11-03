@@ -41,7 +41,8 @@
       },
       {
         "command": "aiReminder.connect",
-        "title": "AI Reminder: Connect Account"
+        "title": "AI Reminder: Connect Account",
+        "category": "AI Reminder"
       },
       {
         "command": "aiReminder.disconnect",
