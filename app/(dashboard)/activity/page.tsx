@@ -274,7 +274,7 @@ export default function ActivityPage() {
               </div>
             ) : (
               <div className="divide-y">
-                {events.map((event) => (
+                {events.slice(0, 5).map((event) => (
                   <article
                     key={event.id}
                     className="flex items-start gap-3 p-4"
@@ -335,7 +335,7 @@ export default function ActivityPage() {
               </div>
             ) : (
               <div className="divide-y">
-                {sessions.map((session) => (
+                {sessions.slice(0,5).map((session) => (
                   <article key={session.id} className="space-y-3 p-4">
                     <div className="flex items-center justify-between gap-3">
                       <p className="truncate text-sm font-medium">

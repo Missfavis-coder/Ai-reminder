@@ -1,3 +1,4 @@
+
 import * as vscode from "vscode";
 import { createHash, randomUUID } from "node:crypto";
 import { AiReminderApi } from "./api";
@@ -42,7 +43,6 @@ async function registerWorkspace(
   folder: vscode.WorkspaceFolder,
 ): Promise<void> {
   const key = getWorkspaceKey(folder);
-
   const existing = workspaceSessions.get(key);
 
   if (existing?.registered) {
@@ -186,7 +186,6 @@ async function completeConnection(apiUrl: string): Promise<void> {
   );
 
   await registerAllWorkspaces();
-
   await startVisibleWorkspaceSession();
 
   vscode.window.showInformationMessage(
@@ -198,17 +197,122 @@ export async function activate(
   context: vscode.ExtensionContext,
 ): Promise<void> {
   output = vscode.window.createOutputChannel("AI Reminder");
-
   context.subscriptions.push(output);
 
   api = new AiReminderApi(context.secrets, output);
 
   log("AI Reminder extension activated.");
 
-  await registerAllWorkspaces();
+  // Register commands immediately.
+  // Do not wait for network requests or workspace initialization first.
 
-  await startVisibleWorkspaceSession();
+  const connectCommand = vscode.commands.registerCommand(
+    "aiReminder.connect",
+    async () => {
+      const apiUrl = await api.getApiUrl();
 
+      if (!apiUrl) {
+        const enteredUrl = await vscode.window.showInputBox({
+          title: "Connect AI Reminder",
+          prompt: "Enter your deployed AI Reminder website URL.",
+          placeHolder: "https://your-ai-reminder-domain.com",
+          ignoreFocusOut: true,
+        });
+
+        if (!enteredUrl) {
+          return;
+        }
+
+        try {
+          await completeConnection(enteredUrl);
+        } catch (error) {
+          vscode.window.showErrorMessage(
+            error instanceof Error
+              ? error.message
+              : "Could not connect to AI Reminder.",
+          );
+
+          log(`Connection failed: ${String(error)}`);
+        }
+
+        return;
+      }
+
+      try {
+        await registerAllWorkspaces();
+        await startVisibleWorkspaceSession();
+
+        vscode.window.showInformationMessage(
+          "AI Reminder is connected.",
+        );
+      } catch (error) {
+        vscode.window.showErrorMessage(
+          error instanceof Error
+            ? error.message
+            : "Could not complete the connection.",
+        );
+
+        log(`Connection check failed: ${String(error)}`);
+      }
+    },
+  );
+
+  const disconnectCommand = vscode.commands.registerCommand(
+    "aiReminder.disconnect",
+    async () => {
+      try {
+        for (const folder of vscode.workspace.workspaceFolders ?? []) {
+          await endWorkspaceSession(folder);
+        }
+
+        workspaceSessions.clear();
+
+        await api.disconnect();
+
+        vscode.window.showInformationMessage(
+          "AI Reminder disconnected.",
+        );
+      } catch (error) {
+        vscode.window.showErrorMessage(
+          error instanceof Error
+            ? error.message
+            : "Could not disconnect AI Reminder.",
+        );
+      }
+    },
+  );
+
+  const showActivityCommand = vscode.commands.registerCommand(
+    "aiReminder.showActivity",
+    () => output.show(),
+  );
+
+  const startSessionCommand = vscode.commands.registerCommand(
+    "aiReminder.startSession",
+    async () => {
+      await startVisibleWorkspaceSession();
+    },
+  );
+
+  const endSessionCommand = vscode.commands.registerCommand(
+    "aiReminder.endSession",
+    async () => {
+      for (const folder of vscode.workspace.workspaceFolders ?? []) {
+        await endWorkspaceSession(folder);
+      }
+    },
+  );
+
+  // Register the commands before starting asynchronous initialization.
+  context.subscriptions.push(
+    connectCommand,
+    disconnectCommand,
+    showActivityCommand,
+    startSessionCommand,
+    endSessionCommand,
+  );
+
+  // Register the browser-to-VS Code URI handler.
   context.subscriptions.push(
     vscode.window.registerUriHandler({
       handleUri: async (uri: vscode.Uri) => {
@@ -239,63 +343,10 @@ export async function activate(
       },
     }),
 
-    vscode.commands.registerCommand(
-      "aiReminder.connect",
-      async () => {
-        const apiUrl = await api.getApiUrl();
-
-        if (!apiUrl) {
-          const enteredUrl = await vscode.window.showInputBox({
-            title: "Connect AI Reminder",
-            prompt: "Enter your deployed AI Reminder website URL.",
-            placeHolder: "https://your-ai-reminder-domain.com",
-            ignoreFocusOut: true,
-          });
-
-          if (!enteredUrl) {
-            return;
-          }
-
-          try {
-            await completeConnection(enteredUrl);
-          } catch (error) {
-            vscode.window.showErrorMessage(
-              error instanceof Error
-                ? error.message
-                : "Could not connect to AI Reminder.",
-            );
-          }
-
-          return;
-        }
-
-        await registerAllWorkspaces();
-        await startVisibleWorkspaceSession();
-
-        vscode.window.showInformationMessage(
-          "AI Reminder is connected.",
-        );
-      },
-    ),
-
-    vscode.commands.registerCommand(
-      "aiReminder.disconnect",
-      async () => {
-        for (const folder of vscode.workspace.workspaceFolders ?? []) {
-          await endWorkspaceSession(folder);
-        }
-
-        workspaceSessions.clear();
-
-        await api.disconnect();
-      },
-    ),
-
     vscode.workspace.onDidChangeWorkspaceFolders(
       async (event) => {
         for (const folder of event.removed) {
           await endWorkspaceSession(folder);
-
           workspaceSessions.delete(getWorkspaceKey(folder));
         }
 
@@ -359,12 +410,19 @@ export async function activate(
         }
       },
     ),
-
-    vscode.commands.registerCommand(
-      "aiReminder.showActivity",
-      () => output.show(),
-    ),
   );
+
+  // Initialize existing workspaces after all commands are registered.
+  void (async () => {
+    try {
+      await registerAllWorkspaces();
+      await startVisibleWorkspaceSession();
+
+      log("Workspace initialization completed.");
+    } catch (error) {
+      log(`Workspace initialization failed: ${String(error)}`);
+    }
+  })();
 }
 
 export async function deactivate(): Promise<void> {
