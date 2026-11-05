@@ -189,22 +189,49 @@ class AiReminderApi {
         return data.workspace;
     }
     async saveWorkspaceId(workspaceKey, workspaceId) {
-        const key = `aiReminder.workspace.${(0, node_crypto_1.createHash)("sha256")
-            .update(workspaceKey)
-            .digest("hex")}`;
-        await this.secrets.store(key, workspaceId);
+        const stored = await this.secrets.get(WORKSPACE_IDS_KEY);
+        let workspaceIds = {};
+        if (stored) {
+            try {
+                workspaceIds = JSON.parse(stored);
+            }
+            catch {
+                workspaceIds = {};
+            }
+        }
+        workspaceIds[workspaceKey] = workspaceId;
+        await this.secrets.store(WORKSPACE_IDS_KEY, JSON.stringify(workspaceIds));
     }
     async getWorkspaceId(workspaceKey) {
-        const key = `aiReminder.workspace.${(0, node_crypto_1.createHash)("sha256")
-            .update(workspaceKey)
-            .digest("hex")}`;
-        return this.secrets.get(key);
+        const stored = await this.secrets.get(WORKSPACE_IDS_KEY);
+        if (!stored) {
+            return undefined;
+        }
+        try {
+            const workspaceIds = JSON.parse(stored);
+            return workspaceIds[workspaceKey];
+        }
+        catch {
+            return undefined;
+        }
     }
     async clearWorkspaceId(workspaceKey) {
-        const key = `aiReminder.workspace.${(0, node_crypto_1.createHash)("sha256")
-            .update(workspaceKey)
-            .digest("hex")}`;
-        await this.secrets.delete(key);
+        if (!workspaceKey) {
+            await this.secrets.delete(WORKSPACE_IDS_KEY);
+            return;
+        }
+        const stored = await this.secrets.get(WORKSPACE_IDS_KEY);
+        if (!stored) {
+            return;
+        }
+        try {
+            const workspaceIds = JSON.parse(stored);
+            delete workspaceIds[workspaceKey];
+            await this.secrets.store(WORKSPACE_IDS_KEY, JSON.stringify(workspaceIds));
+        }
+        catch {
+            await this.secrets.delete(WORKSPACE_IDS_KEY);
+        }
     }
     async getToken() {
         return this.secrets.get(TOKEN_KEY);

@@ -1,7 +1,9 @@
 
 "use client";
 
+import { useEffect } from "react";
 import Link from "next/link";
+import { useRouter } from "next/navigation";
 import { useApproveExtensionAuth } from "@/lib/hooks/use-extension-auth";
 
 interface VSCodeApprovalProps {
@@ -10,10 +12,21 @@ interface VSCodeApprovalProps {
 
 export function VSCodeApproval({ requestId }: VSCodeApprovalProps) {
   const approval = useApproveExtensionAuth();
+  const router = useRouter();
 
   const handleApprove = () => {
     approval.mutate({ requestId });
   };
+
+  useEffect(() => {
+    if (!approval.isSuccess) return;
+
+    const timeout = window.setTimeout(() => {
+      router.replace("/integrations");
+    }, 2000);
+
+    return () => window.clearTimeout(timeout);
+  }, [approval.isSuccess, router]);
 
   const errorMessage =
     approval.error instanceof Error
@@ -23,7 +36,7 @@ export function VSCodeApproval({ requestId }: VSCodeApprovalProps) {
   if (approval.isSuccess) {
     return (
       <main className="flex min-h-screen items-center justify-center px-5 py-12">
-        <div className="w-full max-w-md rounded-2xl border border-border bg-card p-8 text-center shadow-xl">
+        <div className="w-full max-w-md rounded-2xl bg-neutral-100 p-8 text-center shadow-xl">
           <div className="mx-auto mb-5 flex h-16 w-16 items-center justify-center rounded-full bg-emerald-500/10 text-emerald-500">
             <svg
               viewBox="0 0 24 24"
@@ -46,14 +59,12 @@ export function VSCodeApproval({ requestId }: VSCodeApprovalProps) {
           </h1>
 
           <p className="mt-3 text-sm leading-6 text-muted-foreground">
-            Your Taskier account has approved this VS Code connection.
-            You can return to VS Code. It will finish connecting
-            automatically.
+            Your Taskier account has successfully authorized this VS Code
+            connection. VS Code will finish connecting automatically.
           </p>
 
           <p className="mt-6 text-xs text-muted-foreground">
-            You can disconnect this installation anytime from your
-            Taskier settings.
+            Redirecting you to Integrations...
           </p>
         </div>
       </main>
@@ -62,7 +73,7 @@ export function VSCodeApproval({ requestId }: VSCodeApprovalProps) {
 
   return (
     <main className="flex min-h-screen items-center justify-center px-5 py-12">
-      <div className="w-full max-w-md rounded-2xl border border-border bg-card p-8 shadow-xl">
+      <div className="w-full max-w-md rounded-2xl border border-border bg-neutral-100 p-8 shadow-xl">
         <div className="mb-7 flex items-center gap-3">
           <div className="flex h-12 w-12 items-center justify-center rounded-xl bg-primary/10 text-primary">
             <svg

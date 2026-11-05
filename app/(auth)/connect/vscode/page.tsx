@@ -1,6 +1,8 @@
 
 import { VSCodeApproval } from "@/components/extension-auth/vscode-approval";
 
+export const instant = false;
+
 interface PageProps {
   searchParams: Promise<{
     request?: string;
