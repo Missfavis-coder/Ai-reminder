@@ -25,10 +25,25 @@ import {
   createReminderJob,
 } from "@/lib/server/reminders/create-job";
 
+import {
+  createInAppNotification,
+} from "@/lib/server/notifications/create-in-app-notification";
+
 function getSelectedChannelIds(
   channelIds: string[] | undefined,
 ) {
   return [...new Set(channelIds ?? [])];
+}
+
+function getNotificationDescription(
+  description: string | null,
+  reason: string,
+) {
+  if (description?.trim()) {
+    return `${description.trim()}\n\n${reason}`;
+  }
+
+  return reason;
 }
 
 export async function evaluateScheduledRules() {
@@ -42,6 +57,7 @@ export async function evaluateScheduledRules() {
   let evaluated = 0;
   let due = 0;
   let jobsCreated = 0;
+  let inAppNotificationsCreated = 0;
 
   for (const rule of rules) {
     const parsed = reminderRuleConfigSchema.safeParse(
@@ -62,15 +78,6 @@ export async function evaluateScheduledRules() {
       config.channelIds,
     );
 
-    if (channelIds.length === 0) {
-      console.error(
-        "Reminder has no selected notification channels.",
-        { ruleId: rule.id },
-      );
-
-      continue;
-    }
-
     // Fixed-time and deadline reminders.
     if (
       config.type === "fixed_time" ||
@@ -90,31 +97,56 @@ export async function evaluateScheduledRules() {
 
       due++;
 
-      const message = rule.description
-        ? `${rule.name}\n\n${rule.description}`
-        : rule.name;
+      // Always create an Inbox notification when the reminder is due.
+      // The source key prevents duplicate Inbox entries across cron runs.
+      const inboxNotification = await createInAppNotification({
+        userId: rule.userId,
+        title: rule.name,
+        description: getNotificationDescription(
+          rule.description,
+          result.reason,
+        ),
+        sourceKey: result.idempotencyKey,
+      });
 
-      for (const channelId of channelIds) {
-        const created = await createReminderJob({
-          userId: rule.userId,
-          ruleId: rule.id,
-          channelId,
-          scheduledAt: now,
+      if (inboxNotification.created) {
+        inAppNotificationsCreated++;
+      }
 
-          idempotencyKey:
-            `${result.idempotencyKey}:${channelId}`,
+      // External delivery jobs are optional.
+      // The Inbox notification does not depend on WhatsApp or another channel.
+      if (channelIds.length === 0) {
+        console.info(
+          "Reminder created in Inbox without external delivery channels.",
+          { ruleId: rule.id },
+        );
+      } else {
+        const message = rule.description
+          ? `${rule.name}\n\n${rule.description}`
+          : rule.name;
 
-          payload: {
-            title: rule.name,
-            description: rule.description ?? "",
-            message,
-            reason: result.reason,
-            reminderType: config.type,
-          },
-        });
+        for (const channelId of channelIds) {
+          const created = await createReminderJob({
+            userId: rule.userId,
+            ruleId: rule.id,
+            channelId,
+            scheduledAt: now,
 
-        if (created.created) {
-          jobsCreated++;
+            idempotencyKey:
+              `${result.idempotencyKey}:${channelId}`,
+
+            payload: {
+              title: rule.name,
+              description: rule.description ?? "",
+              message,
+              reason: result.reason,
+              reminderType: config.type,
+            },
+          });
+
+          if (created.created) {
+            jobsCreated++;
+          }
         }
       }
 
@@ -182,6 +214,29 @@ export async function evaluateScheduledRules() {
 
       due++;
 
+      const inboxNotification = await createInAppNotification({
+        userId: rule.userId,
+        title: rule.name,
+        description: getNotificationDescription(
+          rule.description,
+          result.reason,
+        ),
+        sourceKey: result.idempotencyKey,
+      });
+
+      if (inboxNotification.created) {
+        inAppNotificationsCreated++;
+      }
+
+      if (channelIds.length === 0) {
+        console.info(
+          "Activity reminder created in Inbox without external delivery channels.",
+          { ruleId: rule.id, sessionId: session.id },
+        );
+
+        continue;
+      }
+
       const message = await generateReminderMessage({
         ruleName: rule.name,
         reason: result.reason,
@@ -219,5 +274,6 @@ export async function evaluateScheduledRules() {
     evaluated,
     due,
     jobsCreated,
+    inAppNotificationsCreated,
   };
 }
