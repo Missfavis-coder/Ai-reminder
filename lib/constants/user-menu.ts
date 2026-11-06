@@ -1,6 +1,6 @@
 export const USER_MENU = {
     dashboardHref: "/dashboard",
-    accountHref: "/account",
+    accountHref: "/register",
     accountkeysHref: "/account/api-keys",
     pricingHref: "/pricing",
     signInHref: "/login",

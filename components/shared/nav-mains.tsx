@@ -63,7 +63,7 @@ export function NavMain({
                                                     "py-5 transition-all duration-300 rounded-[6px] text-sm tracking-wide text-neutral-600 cursor-pointer mb-1 border-neutral-700",
                                                     isActive
                                                         ? "bg-muted text-black  shadow-xs font-bold"
-                                                        : "text-neutral-700 hover:text-foreground hover:bg-muted/10 font-semibold"
+                                                        : "text-neutral-700 hover:text-foreground hover:bg-muted/10 font-bold"
                                                 )}
                                             >
                                                 {item.icon && (
