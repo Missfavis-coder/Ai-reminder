@@ -26,128 +26,16 @@ import {
   useActivityEvents,
   useWorkspaceSessions,
 } from "@/lib/hooks/use-activity";
-import {
-  useCreateTask,
-  useTasks,
-  useUpdateTask,
+import {useCreateTask, useTasks, useUpdateTask,
 } from "@/lib/hooks/use-tasks";
 import { useReminderRules } from "@/lib/hooks/use-reminder-rules";
 import { useWorkspaces } from "@/lib/hooks/use-workspace";
 
 import type { Task } from "@/lib/types/tasks";
-import type {
-  ReminderRule,
-  ReminderRuleConfig,
-} from "@/lib/types/reminder";
+import { formatDate, getReminderDescription, getReminderIcon, getReminderTiming, getReminderTriggerTime, isTaskOverdue,  formatDuration } from "@/lib/utils/dashboard";
+
 
 type TaskFilter = "Upcoming" | "Overdue" | "Completed";
-
-function formatDate(value: string | null | undefined) {
-  if (!value) return "No due date";
-
-  const date = new Date(value);
-
-  if (Number.isNaN(date.getTime())) return "No due date";
-
-  return date.toLocaleDateString(undefined, {
-    month: "short",
-    day: "numeric",
-    year: date.getFullYear() !== new Date().getFullYear()
-      ? "numeric"
-      : undefined,
-  });
-}
-
-function formatDateTime(value: string) {
-  const date = new Date(value);
-
-  if (Number.isNaN(date.getTime())) return "Date unavailable";
-
-  return date.toLocaleString(undefined, {
-    month: "short",
-    day: "numeric",
-    hour: "numeric",
-    minute: "2-digit",
-  });
-}
-
-function formatDuration(seconds: number) {
-  const safeSeconds = Math.max(0, seconds);
-
-  const hours = Math.floor(safeSeconds / 3600);
-  const minutes = Math.floor((safeSeconds % 3600) / 60);
-
-  if (hours > 0) return `${hours}h ${minutes}m`;
-  if (minutes > 0) return `${minutes}m`;
-
-  return `${safeSeconds}s`;
-}
-
-function isTaskOverdue(task: Task) {
-  return (
-    !task.completed &&
-    Boolean(task.dueAt) &&
-    new Date(task.dueAt as string).getTime() < Date.now()
-  );
-}
-
-function getReminderTriggerTime(config: ReminderRuleConfig) {
-  if (config.type === "fixed_time") {
-    return new Date(config.scheduledAt).getTime();
-  }
-
-  if (config.type === "deadline") {
-    return (
-      new Date(config.deadlineAt).getTime() -
-      config.leadTimeSeconds * 1000
-    );
-  }
-
-  return null;
-}
-
-function getReminderDescription(config: ReminderRuleConfig) {
-  switch (config.type) {
-    case "fixed_time":
-      return `Scheduled for ${formatDateTime(config.scheduledAt)}`;
-
-    case "deadline":
-      return `Deadline reminder · ${formatDateTime(config.deadlineAt)}`;
-
-    case "active_work":
-      return `After ${Math.round(config.thresholdSeconds / 60)} minutes of active work`;
-
-    case "inactivity":
-      return `After ${Math.round(config.thresholdSeconds / 60)} minutes of inactivity`;
-  }
-}
-
-function getReminderIcon(type: ReminderRule["type"]) {
-  switch (type) {
-    case "fixed_time":
-      return Clock3;
-    case "deadline":
-      return CalendarClock;
-    case "active_work":
-      return Zap;
-    case "inactivity":
-      return Timer;
-  }
-}
-
-function getReminderTiming(rule: ReminderRule) {
-  const triggerTime = getReminderTriggerTime(rule.config);
-
-  if (triggerTime === null) {
-    return "Condition-based";
-  }
-
-  if (triggerTime <= Date.now()) {
-    return "Due or awaiting evaluation";
-  }
-
-  return formatDateTime(new Date(triggerTime).toISOString());
-}
 
 export default function DashboardPage() {
   const [currentDate, setCurrentDate] = useState("");
@@ -473,7 +361,8 @@ export default function DashboardPage() {
         {/* Main dashboard */}
         <section className="grid grid-cols-1 items-start gap-4 xl:grid-cols-12">
           {/* Tasks */}
-          <div className="min-w-0 rounded-2xl bg-neutral-100 p-4 shadow-xs sm:p-5 xl:col-span-7 max-h-[350px] overflow-y-auto">
+          <div className="min-w-0 flex flex-col justify-between rounded-2xl bg-neutral-100 p-4 shadow-xs sm:p-5 xl:col-span-7 h-110">
+          <div> 
             <div className="mb-4 flex flex-wrap items-center justify-between gap-3">
               <div>
                 <h2 className="text-base font-semibold tracking-tight">
@@ -495,8 +384,8 @@ export default function DashboardPage() {
                 <Plus className="size-4" />
                 Add task
               </Button>
-            </div>
-
+           
+             
             {showTaskInput && (
               <form
                 onSubmit={handleCreateTask}
@@ -558,6 +447,7 @@ export default function DashboardPage() {
                 </button>
               ))}
             </div>
+            </div>
 
             {tasksLoading ? (
               <div className="py-10 text-center text-sm text-neutral-500">
@@ -590,7 +480,7 @@ export default function DashboardPage() {
               </div>
             ) : (
               <div className="space-y-1">
-                {visibleTasks.slice(0, 6).map((task) => (
+                {visibleTasks.slice(0, 3).map((task) => (
                   <article
                     key={task.id}
                     className="flex items-start gap-3 rounded-xl px-3 py-3 transition hover:bg-white"
@@ -667,8 +557,8 @@ export default function DashboardPage() {
                 Could not update the task. Please try again.
               </p>
             )}
-
-            <div className="mt-4 border-t border-[#e8e8e1] pt-3">
+          </div>
+            <div className="mt-8 border-t border-[#e8e8e1] pt-5">
               <Link
                 href="/tasks"
                 className="inline-flex items-center gap-2 text-xs font-medium text-[#838c08] transition hover:text-[#707807]"

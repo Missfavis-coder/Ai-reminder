@@ -40,7 +40,6 @@ type UserMenuProps = {
 export function UserMenu({ user }: UserMenuProps) {
   const router = useRouter();
   const [signingOut, setSigningOut] = useState(false);
-  const [openingPortal, setOpeningPortal] = useState(false);
 
   async function handleSignOut() {
     if (signingOut) return;
@@ -60,35 +59,6 @@ export function UserMenu({ user }: UserMenuProps) {
     }
   }
 
-  async function handleBilling() {
-    if (openingPortal) return;
-    if (!user.hasBilling) {
-      router.push(USER_MENU.pricingHref);
-      return;
-    }
-    setOpeningPortal(true);
-    try {
-      const response = await fetch("/api/billing/portal", { method: "POST" });
-      if (!response.ok) {
-        const data = (await response.json().catch(() => ({}))) as {
-          error?: string;
-          code?: string;
-        };
-        if (data.code === "NO_CUSTOMER") {
-          router.push(USER_MENU.pricingHref);
-          return;
-        }
-        toast.error(data.error ?? USER_MENU.portalErrorMessage);
-        return;
-      }
-      const data = (await response.json()) as { url?: string };
-      if (data.url) window.location.href = data.url;
-    } catch {
-      toast.error(USER_MENU.portalNetworkErrorMessage);
-    } finally {
-      setOpeningPortal(false);
-    }
-  }
 
   const initials = getInitials(user.displayName);
 
@@ -131,21 +101,7 @@ export function UserMenu({ user }: UserMenuProps) {
             Account
           </Link>
         </DropdownMenuItem>
-        <DropdownMenuItem
-          className="cursor-pointer"
-          disabled={openingPortal}
-          onSelect={(event) => {
-            event.preventDefault();
-            void handleBilling();
-          }}
-        >
-          {openingPortal ? (
-            <PiSpinnerGap className="size-4 animate-spin" />
-          ) : (
-            <PiCreditCard className="size-4" />
-          )}
-          {openingPortal ? "Opening..." : "Billing History"}
-        </DropdownMenuItem>
+
         <DropdownMenuSeparator />
         <DropdownMenuItem
           variant="destructive"

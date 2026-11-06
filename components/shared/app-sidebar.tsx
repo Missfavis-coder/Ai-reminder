@@ -3,27 +3,11 @@
 import * as React from "react";
 import {
   PiChartBar,
-  PiCreditCardBold,
-  PiEnvelopeBold,
   PiEnvelopeSimple,
-  PiFigmaLogo,
-  PiFile,
-  PiFlag,
-  PiFolderOpenBold,
   PiHouse,
-  PiHouseBold,
-  PiImagesBold,
-  PiListChecks,
-  PiNoteBlank,
   PiNotebook,
-  PiNoteFill,
-  PiPaletteBold,
   PiBell,
   PiPlus,
-  PiPlusCircleBold,
-  PiShareBold,
-  PiSparkleBold,
-  PiUserBold,
   PiXBold,
   PiPlugsConnected,
 } from "react-icons/pi";
@@ -31,7 +15,6 @@ import {
 import {
   Sidebar,
   SidebarContent,
-  SidebarFooter,
   SidebarHeader,
   SidebarMenu,
   SidebarMenuButton,
@@ -41,7 +24,7 @@ import {
 
 import { Button } from "../ui/button";
 import { NavMain } from "./nav-mains";
-import NavSettings from "./nav-footer";
+import { useRouter } from "next/navigation";
 
 
 const navMain = [
@@ -83,21 +66,14 @@ const navMain = [
 
 
     ],
-  },
-  {
-    group: "My workspace",
-    items: [
-      
-
-
-    ],
-  },
+  }
 
 
 ];
 
 export function AppSidebar({ ...props }: React.ComponentProps<typeof Sidebar>) {
   const { state, isMobile, setOpenMobile } = useSidebar();
+  const router = useRouter();
   return (
     <Sidebar
       className="  fixed bg-background "
@@ -136,6 +112,7 @@ export function AppSidebar({ ...props }: React.ComponentProps<typeof Sidebar>) {
         <div className="w-full mb-4">
           <Button
           variant="default"
+          onClick={(()=>{router.push("/reminders")})}
           size={"icon-lg"}
           className="w-full flex justify-between items-center py-6 px-4 cursor-pointer text-sm border-none"
           >
