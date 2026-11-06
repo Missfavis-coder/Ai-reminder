@@ -36,6 +36,7 @@ import type {
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import { Textarea } from "@/components/ui/textarea";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Badge } from "@/components/ui/badge";
 
@@ -83,6 +84,11 @@ const reminderFormSchema = z
       .trim()
       .min(1, "Enter a name for this reminder.")
       .max(120, "Reminder name cannot exceed 120 characters."),
+    description: z
+      .string()
+      .trim()
+      .min(1, "Enter a description for this reminder.")
+      .max(500, "Description cannot exceed 500 characters."),
     type: z.enum([
       "active_work",
       "inactivity",
@@ -271,6 +277,7 @@ export default function RemindersPage() {
   } = useNotificationChannels();
 
   const [name, setName] = useState("");
+  const [description, setDescription] = useState("");
   const [type, setType] =
     useState<ReminderRuleType>("inactivity");
   const [thresholdMinutes, setThresholdMinutes] =
@@ -296,6 +303,7 @@ export default function RemindersPage() {
 
     const validation = reminderFormSchema.safeParse({
       name,
+      description,
       type,
       thresholdMinutes,
       leadTimeMinutes,
@@ -343,6 +351,7 @@ export default function RemindersPage() {
 
     const input: CreateReminderRuleInput = {
       name: values.name,
+      description: values.description,
       config,
       channelIds: values.channelIds,
     };
@@ -353,6 +362,7 @@ export default function RemindersPage() {
       toast.success("Reminder created successfully!");
 
       setName("");
+      setDescription("");
       setType("inactivity");
       setThresholdMinutes("20");
       setLeadTimeMinutes("30");
@@ -409,7 +419,7 @@ export default function RemindersPage() {
               ?.scrollIntoView({ behavior: "smooth" })
           }
           size="sm"
-          className="w-fit gap-2"
+          className="w-fit gap-2 py-5 px-6 "
         >
           <Plus className="h-4 w-4" />
           New reminder
@@ -440,7 +450,7 @@ export default function RemindersPage() {
         <form onSubmit={handleSubmit} className="space-y-5">
           {/* Reminder name */}
           <div className="space-y-2">
-            <Label htmlFor="reminder-name" className="text-xs">
+            <Label htmlFor="reminder-name" className="text-sm font-semibold tracking-wide">
               Reminder name
             </Label>
 
@@ -455,13 +465,33 @@ export default function RemindersPage() {
             />
           </div>
 
+          {/* Reminder description */}
+          <div className="space-y-2">
+            <Label htmlFor="reminder-description" className="text-sm font-semibold tracking-wide">
+              What should we remind you about?
+            </Label>
+            <Textarea
+              id="reminder-description"
+              value={description}
+              onChange={(event) => setDescription(event.target.value)}
+              placeholder="e.g. Wash the clothes in the laundry basket before the evening."
+              maxLength={500}
+              required
+              rows={3}
+              className="resize-none text-sm"
+            />
+            <p className="text-[13px] text-muted-foreground">
+              Add details to help make your reminder meaningful.
+            </p>
+          </div>
+
           {/* Reminder type - horizontal scroll */}
           <div className="space-y-3">
             <div>
-              <Label className="text-xs">
+              <Label className="text-sm font-semibold tracking-wide">
                 When should we remind you?
               </Label>
-              <p className="mt-1 text-xs text-muted-foreground">
+              <p className="mt-1 text-[13px] text-muted-foreground">
                 Select a reminder type.
               </p>
             </div>
@@ -519,7 +549,7 @@ export default function RemindersPage() {
               <h3 className="text-sm font-semibold">
                 Reminder settings
               </h3>
-              <p className="mt-0.5 text-xs text-muted-foreground">
+              <p className="mt-0.5 text-[13px] text-muted-foreground">
                 Configure your selected reminder.
               </p>
             </div>
@@ -528,7 +558,7 @@ export default function RemindersPage() {
               type === "inactivity") && (
               <div className="space-y-4">
                 <div className="max-w-xs space-y-2">
-                  <Label htmlFor="threshold" className="text-xs">
+                  <Label htmlFor="threshold" className="text-sm font-semibold tracking-wide">
                     Duration (minutes)
                   </Label>
 
@@ -545,7 +575,7 @@ export default function RemindersPage() {
                     className="h-9"
                   />
 
-                  <p className="text-[11px] text-muted-foreground">
+                  <p className="text-[12px] text-muted-foreground">
                     Enter a duration between 1 minute and 24 hours.
                   </p>
                 </div>
@@ -560,10 +590,10 @@ export default function RemindersPage() {
                   />
 
                   <div>
-                    <p className="text-xs font-medium">
+                    <p className="text-[13px] font-medium">
                       Repeat this reminder
                     </p>
-                    <p className="text-[11px] text-muted-foreground">
+                    <p className="text-[12px] text-muted-foreground">
                       Allow it to trigger again when the conditions are met.
                     </p>
                   </div>
@@ -877,6 +907,12 @@ export default function RemindersPage() {
                           {rule.status}
                         </Badge>
                       </div>
+
+                      {rule.description && (
+                        <p className="mt-1.5 whitespace-pre-wrap text-xs leading-5 text-muted-foreground">
+                          {rule.description}
+                        </p>
+                      )}
 
                       <p className="mt-1.5 text-xs text-muted-foreground">
                         {describeRule(rule.config)}

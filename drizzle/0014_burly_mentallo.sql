@@ -1,0 +1,1 @@
+ALTER TABLE "reminder_rules" ADD COLUMN "description" text;

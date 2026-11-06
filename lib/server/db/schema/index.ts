@@ -244,39 +244,50 @@ export const authSessions = pgTable(
 );
 
   
-  export const reminderRules = pgTable(
-    "reminder_rules",
-    {
-      id: uuid("id").defaultRandom().primaryKey(),
-      userId: text("user_id")
-        .notNull()
-        .references(() => users.id, { onDelete: "cascade" }),
-        taskId: uuid("task_id").references(() => tasks.id, {
-          onDelete: "cascade",
-        }),
-      name: varchar("name", { length: 200 }).notNull(),
-      type: reminderRuleTypeEnum("type").notNull(),
-      config: jsonb("config")
-        .$type<ReminderRuleConfig>()
-        .notNull(),
-      status: reminderRuleStatusEnum("status")
-        .notNull()
-        .default("active"),
-      createdAt: timestamp("created_at", {
-        withTimezone: true,
-      }).notNull().defaultNow(),
-      updatedAt: timestamp("updated_at", {
-        withTimezone: true,
-      }).notNull().defaultNow(),
-    },
-    (table) => [
-      index("reminder_rules_user_status_idx").on(
-        table.userId,
-        table.status,
-      ),
-      index("reminder_rules_type_idx").on(table.type),
-    ],
-  );
+export const reminderRules = pgTable(
+  "reminder_rules",
+  {
+    id: uuid("id").defaultRandom().primaryKey(),
+
+    userId: text("user_id")
+      .notNull()
+      .references(() => users.id, { onDelete: "cascade" }),
+
+    taskId: uuid("task_id").references(() => tasks.id, {
+      onDelete: "cascade",
+    }),
+
+    name: varchar("name", { length: 200 }).notNull(),
+
+    // Additional context for personal reminders.
+    description: text("description"),
+
+    type: reminderRuleTypeEnum("type").notNull(),
+
+    config: jsonb("config")
+      .$type<ReminderRuleConfig>()
+      .notNull(),
+
+    status: reminderRuleStatusEnum("status")
+      .notNull()
+      .default("active"),
+
+    createdAt: timestamp("created_at", {
+      withTimezone: true,
+    }).notNull().defaultNow(),
+
+    updatedAt: timestamp("updated_at", {
+      withTimezone: true,
+    }).notNull().defaultNow(),
+  },
+  (table) => [
+    index("reminder_rules_user_status_idx").on(
+      table.userId,
+      table.status,
+    ),
+    index("reminder_rules_type_idx").on(table.type),
+  ],
+);
   
   export const notificationChannels = pgTable(
     "notification_channels",

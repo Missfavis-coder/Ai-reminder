@@ -656,16 +656,6 @@ export default function IntegrationsPage() {
 
         {/* Notification integrations */}
         <section className="space-y-2">
-          <div>
-            <h2 className="text-base font-semibold">
-              Notification integrations
-            </h2>
-
-            <p className="mt-1 text-sm text-muted-foreground">
-              Connect and manage the channels where you want to receive
-              reminders.
-            </p>
-          </div>
 
           <ChannelIntegration />
         </section>

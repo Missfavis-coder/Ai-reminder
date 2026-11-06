@@ -1,7 +1,6 @@
-
 import "server-only";
 
-import { and, eq, isNotNull } from "drizzle-orm";
+import { and, eq, inArray, isNotNull } from "drizzle-orm";
 
 import { db } from "@/lib/server/db";
 import {
@@ -91,19 +90,44 @@ export async function evaluateSessionRules(input: {
 
     due++;
 
-    const [channel] = await db
-      .select({ id: notificationChannels.id })
+    const selectedChannelIds = config.channelIds ?? [];
+
+    if (selectedChannelIds.length === 0) {
+      console.error("Reminder rule has no selected notification channels", {
+        ruleId: rule.id,
+      });
+      continue;
+    }
+
+    // Only WhatsApp is currently supported by the notification dispatcher.
+    // Do not create jobs for channels that the dispatcher cannot deliver to.
+    const eligibleChannels = await db
+      .select({
+        id: notificationChannels.id,
+        type: notificationChannels.type,
+      })
       .from(notificationChannels)
       .where(
         and(
           eq(notificationChannels.userId, userId),
-          eq(notificationChannels.type, "whatsapp"),
+          inArray(notificationChannels.id, selectedChannelIds),
           eq(notificationChannels.enabled, true),
           isNotNull(notificationChannels.consentGrantedAt),
           isNotNull(notificationChannels.verifiedAt),
         ),
-      )
-      .limit(1);
+      );
+
+    const deliverableChannels = eligibleChannels.filter(
+      (channel) => channel.type === "whatsapp",
+    );
+
+    if (deliverableChannels.length === 0) {
+      console.error(
+        "No selected, verified WhatsApp notification channel is available for this reminder rule.",
+        { ruleId: rule.id },
+      );
+      continue;
+    }
 
     const message = await generateReminderMessage({
       ruleName: rule.name,
@@ -111,23 +135,24 @@ export async function evaluateSessionRules(input: {
       personalize: true,
     });
 
-    const created = await createReminderJob({
-      userId,
-      ruleId: rule.id,
-      channelId: channel?.id,
-      scheduledAt: now,
-      idempotencyKey: result.idempotencyKey,
-      payload: {
-        message,
-        reason: result.reason,
-        workspaceId: session.workspaceId,
-        sessionId: session.sessionId,
-        channelPending: !channel,
-      },
-    });
+    for (const channel of deliverableChannels) {
+      const created = await createReminderJob({
+        userId,
+        ruleId: rule.id,
+        channelId: channel.id,
+        scheduledAt: now,
+        idempotencyKey: `${result.idempotencyKey}:${channel.id}`,
+        payload: {
+          message,
+          reason: result.reason,
+          workspaceId: session.workspaceId,
+          sessionId: session.sessionId,
+        },
+      });
 
-    if (created.created) {
-      jobsCreated++;
+      if (created.created) {
+        jobsCreated++;
+      }
     }
   }
 
