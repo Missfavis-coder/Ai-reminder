@@ -1,566 +1,986 @@
 "use client";
 
-import { useState, useEffect } from "react";
+import { useEffect, useMemo, useState } from "react";
+import Link from "next/link";
 import {
-  PiCaretLeft,
-  PiCaretRight,
-  PiCheck,
-  PiClock,
-  PiDotsThreeVertical,
-  PiPauseFill,
-  PiPlus,
-  PiSparkle,
-  PiStopFill,
-  PiVideoCamera,
-} from "react-icons/pi";
+  Activity,
+  ArrowRight,
+  Bell,
+  CalendarClock,
+  Check,
+  CheckCircle2,
+  Circle,
+  Clock3,
+  ListTodo,
+  Monitor,
+  Plus,
+  RefreshCw,
+  Timer,
+  Zap,
+} from "lucide-react";
 
 import { Button } from "@/components/ui/button";
+
+import { useCurrentUser } from "@/lib/hooks/use-auth";
+import {
+  useActivityEvents,
+  useWorkspaceSessions,
+} from "@/lib/hooks/use-activity";
 import {
   useCreateTask,
   useTasks,
   useUpdateTask,
 } from "@/lib/hooks/use-tasks";
+import { useReminderRules } from "@/lib/hooks/use-reminder-rules";
+import { useWorkspaces } from "@/lib/hooks/use-workspace";
 
-export default function HomePage() {
-  const [timerRunning, setTimerRunning] = useState(true);
-  const [activeTab, setActiveTab] = useState("Upcoming");
+import type { Task } from "@/lib/types/tasks";
+import type {
+  ReminderRule,
+  ReminderRuleConfig,
+} from "@/lib/types/reminder";
+
+type TaskFilter = "Upcoming" | "Overdue" | "Completed";
+
+function formatDate(value: string | null | undefined) {
+  if (!value) return "No due date";
+
+  const date = new Date(value);
+
+  if (Number.isNaN(date.getTime())) return "No due date";
+
+  return date.toLocaleDateString(undefined, {
+    month: "short",
+    day: "numeric",
+    year: date.getFullYear() !== new Date().getFullYear()
+      ? "numeric"
+      : undefined,
+  });
+}
+
+function formatDateTime(value: string) {
+  const date = new Date(value);
+
+  if (Number.isNaN(date.getTime())) return "Date unavailable";
+
+  return date.toLocaleString(undefined, {
+    month: "short",
+    day: "numeric",
+    hour: "numeric",
+    minute: "2-digit",
+  });
+}
+
+function formatDuration(seconds: number) {
+  const safeSeconds = Math.max(0, seconds);
+
+  const hours = Math.floor(safeSeconds / 3600);
+  const minutes = Math.floor((safeSeconds % 3600) / 60);
+
+  if (hours > 0) return `${hours}h ${minutes}m`;
+  if (minutes > 0) return `${minutes}m`;
+
+  return `${safeSeconds}s`;
+}
+
+function isTaskOverdue(task: Task) {
+  return (
+    !task.completed &&
+    Boolean(task.dueAt) &&
+    new Date(task.dueAt as string).getTime() < Date.now()
+  );
+}
+
+function getReminderTriggerTime(config: ReminderRuleConfig) {
+  if (config.type === "fixed_time") {
+    return new Date(config.scheduledAt).getTime();
+  }
+
+  if (config.type === "deadline") {
+    return (
+      new Date(config.deadlineAt).getTime() -
+      config.leadTimeSeconds * 1000
+    );
+  }
+
+  return null;
+}
+
+function getReminderDescription(config: ReminderRuleConfig) {
+  switch (config.type) {
+    case "fixed_time":
+      return `Scheduled for ${formatDateTime(config.scheduledAt)}`;
+
+    case "deadline":
+      return `Deadline reminder · ${formatDateTime(config.deadlineAt)}`;
+
+    case "active_work":
+      return `After ${Math.round(config.thresholdSeconds / 60)} minutes of active work`;
+
+    case "inactivity":
+      return `After ${Math.round(config.thresholdSeconds / 60)} minutes of inactivity`;
+  }
+}
+
+function getReminderIcon(type: ReminderRule["type"]) {
+  switch (type) {
+    case "fixed_time":
+      return Clock3;
+    case "deadline":
+      return CalendarClock;
+    case "active_work":
+      return Zap;
+    case "inactivity":
+      return Timer;
+  }
+}
+
+function getReminderTiming(rule: ReminderRule) {
+  const triggerTime = getReminderTriggerTime(rule.config);
+
+  if (triggerTime === null) {
+    return "Condition-based";
+  }
+
+  if (triggerTime <= Date.now()) {
+    return "Due or awaiting evaluation";
+  }
+
+  return formatDateTime(new Date(triggerTime).toISOString());
+}
+
+export default function DashboardPage() {
+  const [currentDate, setCurrentDate] = useState("");
+  const [greeting, setGreeting] = useState("Hello");
   const [newTaskTitle, setNewTaskTitle] = useState("");
   const [showTaskInput, setShowTaskInput] = useState(false);
-  const [currentDate, setCurrentDate] = useState("");
+  const [activeTaskFilter, setActiveTaskFilter] =
+    useState<TaskFilter>("Upcoming");
 
-useEffect(() => {
-  setCurrentDate(
-    new Date().toLocaleDateString("en-US", {
-      weekday: "long",
-      month: "long",
-      day: "numeric",
-    })
-  );
-}, []);
+  useEffect(() => {
+    const now = new Date();
+
+    setCurrentDate(
+      now.toLocaleDateString(undefined, {
+        weekday: "long",
+        month: "long",
+        day: "numeric",
+      }),
+    );
+
+    const hour = now.getHours();
+
+    setGreeting(
+      hour < 12
+        ? "Good morning"
+        : hour < 18
+          ? "Good afternoon"
+          : "Good evening",
+    );
+  }, []);
+
+  const {
+    data: currentUserResponse,
+    isLoading: userLoading,
+  } = useCurrentUser();
 
   const {
     data: tasks = [],
-    isPending: tasksLoading,
+    isLoading: tasksLoading,
     isError: tasksError,
   } = useTasks();
+
+  const {
+    data: activityEvents = [],
+    isLoading: activityLoading,
+    isError: activityError,
+    refetch: refetchActivity,
+  } = useActivityEvents({
+    period: "7d",
+    limit: 100,
+  });
+
+  const {
+    data: sessions = [],
+    isLoading: sessionsLoading,
+    isError: sessionsError,
+    refetch: refetchSessions,
+  } = useWorkspaceSessions({
+    period: "7d",
+    limit: 100,
+  });
+
+  const {
+    data: workspaces = [],
+    isLoading: workspacesLoading,
+  } = useWorkspaces();
+
+  const {
+    data: reminderRules = [],
+    isLoading: remindersLoading,
+    isError: remindersError,
+  } = useReminderRules();
 
   const createTask = useCreateTask();
   const updateTask = useUpdateTask();
 
-  const completedTasks = tasks.filter((task) => task.completed).length;
+  const userName =
+    currentUserResponse?.user?.name?.trim().split(/\s+/)[0] ||
+    "there";
 
-  const visibleTasks = tasks.filter((task) =>
-    activeTab === "Completed"
-      ? task.completed
-      : activeTab === "Overdue"
-        ? !task.completed &&
-          task.dueAt !== null &&
-          new Date(task.dueAt).getTime() < Date.now()
-        : !task.completed &&
-          (!task.dueAt || new Date(task.dueAt).getTime() >= Date.now()),
+  const completedTasks = tasks.filter(
+    (task) => task.completed,
   );
 
-  async function handleCreateTask() {
+  const openTasks = tasks.filter(
+    (task) => !task.completed,
+  );
+
+  const overdueTasks = tasks.filter(isTaskOverdue);
+
+  const activeReminderRules = reminderRules.filter(
+    (rule) => rule.status === "active",
+  );
+
+  const activeSessions = sessions.filter(
+    (session) => session.status === "active",
+  );
+
+  const totalActiveSeconds = sessions.reduce(
+    (total, session) => total + session.activeSeconds,
+    0,
+  );
+
+  const connectedWorkspaces = workspaces.filter(
+    (workspace) =>
+      workspace.status === "connected" &&
+      workspace.monitoringEnabled,
+  );
+
+  const visibleTasks = useMemo(() => {
+    switch (activeTaskFilter) {
+      case "Completed":
+        return tasks.filter((task) => task.completed);
+
+      case "Overdue":
+        return tasks.filter(isTaskOverdue);
+
+      default:
+        return tasks
+          .filter(
+            (task) =>
+              !task.completed && !isTaskOverdue(task),
+          )
+          .sort((a, b) => {
+            if (!a.dueAt) return 1;
+            if (!b.dueAt) return -1;
+
+            return (
+              new Date(a.dueAt).getTime() -
+              new Date(b.dueAt).getTime()
+            );
+          });
+    }
+  }, [tasks, activeTaskFilter]);
+
+  const activityByDay = useMemo(() => {
+    const today = new Date();
+
+    return Array.from({ length: 7 }, (_, index) => {
+      const date = new Date(today);
+      date.setHours(0, 0, 0, 0);
+      date.setDate(today.getDate() - (6 - index));
+
+      const key = [
+        date.getFullYear(),
+        String(date.getMonth() + 1).padStart(2, "0"),
+        String(date.getDate()).padStart(2, "0"),
+      ].join("-");
+
+      const count = activityEvents.filter((event) => {
+        const eventDate = new Date(event.occurredAt);
+
+        const eventKey = [
+          eventDate.getFullYear(),
+          String(eventDate.getMonth() + 1).padStart(2, "0"),
+          String(eventDate.getDate()).padStart(2, "0"),
+        ].join("-");
+
+        return eventKey === key;
+      }).length;
+
+      return {
+        key,
+        label: date.toLocaleDateString(undefined, {
+          weekday: "short",
+        }),
+        count,
+      };
+    });
+  }, [activityEvents]);
+
+  const maxActivityCount = Math.max(
+    1,
+    ...activityByDay.map((day) => day.count),
+  );
+
+  const upcomingReminders = useMemo(() => {
+    return reminderRules
+      .filter((rule) => rule.status === "active")
+      .sort((a, b) => {
+        const aTime = getReminderTriggerTime(a.config);
+        const bTime = getReminderTriggerTime(b.config);
+
+        if (aTime === null && bTime === null) return 0;
+        if (aTime === null) return 1;
+        if (bTime === null) return -1;
+
+        return aTime - bTime;
+      })
+      .slice(0, 4);
+  }, [reminderRules]);
+
+  async function handleCreateTask(
+    event: React.FormEvent<HTMLFormElement>,
+  ) {
+    event.preventDefault();
+
     const title = newTaskTitle.trim();
 
     if (!title || createTask.isPending) return;
 
     try {
       await createTask.mutateAsync({ title });
+
       setNewTaskTitle("");
       setShowTaskInput(false);
     } catch {
-      // The mutation error is displayed below the form.
+      // The mutation error is displayed in the task panel.
     }
   }
 
+  async function handleToggleTask(task: Task) {
+    try {
+      await updateTask.mutateAsync({
+        id: task.id,
+        input: {
+          completed: !task.completed,
+          status: task.completed ? "To Do" : "Completed",
+        },
+      });
+    } catch {
+      // The mutation error is displayed in the task panel.
+    }
+  }
+
+  async function refreshWorkspaceActivity() {
+    await Promise.all([
+      refetchActivity(),
+      refetchSessions(),
+    ]);
+  }
+
+  const taskFilters: TaskFilter[] = [
+    "Upcoming",
+    "Overdue",
+    "Completed",
+  ];
+
   return (
-    <main className="min-h-screen bg-white px-4 py-6 text-[#24251f] sm:px-6 lg:px-8">
-      <div className="space-y-6">
+    <main className="min-h-full bg-white px-4 py-6 text-[#24251f] sm:px-6 lg:px-8">
+      <div className="mx-auto w-full max-w-[1600px] space-y-6">
         {/* Greeting */}
-        <section className="flex flex-wrap items-center justify-between gap-4">
+        <header className="flex flex-wrap items-center justify-between gap-4">
           <div>
             <p className="mb-1 text-sm text-neutral-400">
-            {currentDate}
+              {currentDate || "Your workspace"}
             </p>
 
             <h1 className="text-2xl font-normal tracking-tight sm:text-3xl">
-              <span className="text-neutral-600">Good morning, </span>
-              <span className="font-semibold text-black">Amanda</span>
+              <span className="text-neutral-600">
+                {greeting},{" "}
+              </span>
+              <span className="font-semibold text-black">
+                {userLoading ? "..." : userName}
+              </span>
             </h1>
+
+            <p className="mt-2 text-sm text-neutral-500">
+              Here's an overview of your tasks, reminders and workspace activity.
+            </p>
           </div>
 
           <Button
             variant="outline"
-            className="h-9 rounded-lg border-border bg-white text-xs shadow-none hover:bg-[#f4f4ef]"
+            className="h-9 flex rounded-lg border-border bg-white text-xs shadow-none hover:bg-[#f4f4ef]"
           >
-            Customize <PiSparkle className="ml-1 size-3.5" />
+            <Link href="/tasks" className="flex">
+              <ListTodo className="mr-2 size-4" />
+              Manage tasks
+            </Link>
           </Button>
-        </section>
+        </header>
 
-        {/* Main dashboard grid */}
-        <section className="grid grid-cols-1 items-start gap-4 xl:grid-cols-12">
-          {/* Left column: To-do list and timer */}
-          <div className="grid min-w-0 grid-cols-1 gap-4 sm:grid-cols-2 xl:col-span-7">
-            {/* To-do list */}
-            <div className="min-w-0 rounded-2xl bg-neutral-100 p-4 shadow-xs">
-              <div className="mb-4 flex items-center justify-between gap-2">
-                <h2 className="text-lg font-semibold tracking-tight">
-                  <span className="mr-2">✏️</span>
-                  To do list
-                </h2>
+        {/* Overview cards */}
+        <section className="grid grid-cols-2 gap-3 xl:grid-cols-4">
+          {[
+            {
+              label: "Open tasks",
+              value: openTasks.length,
+              icon: ListTodo,
+            },
+            {
+              label: "Overdue tasks",
+              value: overdueTasks.length,
+              icon: Clock3,
+            },
+            {
+              label: "Completed tasks",
+              value: completedTasks.length,
+              icon: CheckCircle2,
+            },
+            {
+              label: "Active reminders",
+              value: activeReminderRules.length,
+              icon: Bell,
+            },
+          ].map((item) => {
+            const Icon = item.icon;
 
-                <button
-                  type="button"
-                  aria-label="Task options"
-                  onClick={() => setShowTaskInput((value) => !value)}
-                  className="rounded-md p-1 text-primary font-bold hover:bg-[#f5f5f0]"
-                >
-                  <PiDotsThreeVertical className="size-5" />
-                </button>
-              </div>
-
-              <div className="mb-3 h-px bg-neutral-100" />
-
-              {showTaskInput && (
-                <form
-                  className="mb-4 flex gap-2"
-                  onSubmit={(event) => {
-                    event.preventDefault();
-                    void handleCreateTask();
-                  }}
-                >
-                  <input
-                    value={newTaskTitle}
-                    onChange={(event) => setNewTaskTitle(event.target.value)}
-                    placeholder="What do you need to do?"
-                    maxLength={250}
-                    className="min-w-0 flex-1 rounded-lg border border-neutral-300 bg-white px-3 py-2 text-sm outline-none focus:border-[#838c08]"
-                  />
-
-                  <Button
-                    type="submit"
-                    disabled={!newTaskTitle.trim() || createTask.isPending}
-                    className="bg-[#838c08] text-white hover:bg-[#707807]"
-                  >
-                    <PiPlus className="size-4" />
-                  </Button>
-                </form>
-              )}
-
-              {createTask.isError && (
-                <p className="mb-3 text-xs text-red-600">
-                  Could not create the task. Please try again.
-                </p>
-              )}
-
-              {tasksLoading ? (
-                <p className="py-6 text-center text-sm text-neutral-500">
-                  Loading your tasks...
-                </p>
-              ) : tasksError ? (
-                <p className="py-6 text-center text-sm text-red-600">
-                  Could not load tasks. Please refresh and try again.
-                </p>
-              ) : (
-                <div className="space-y-4">
-                  {tasks.slice(0, 5).map((task) => (
-                    <div
-                      key={task.id}
-                      className="flex items-start gap-2.5 text-sm leading-5"
-                    >
-                      <button
-                        type="button"
-                        aria-label={
-                          task.completed
-                            ? `Mark ${task.title} incomplete`
-                            : `Complete ${task.title}`
-                        }
-                        disabled={updateTask.isPending}
-                        onClick={() =>
-                          updateTask.mutate({
-                            id: task.id,
-                            input: { completed: !task.completed },
-                          })
-                        }
-                        className={`mt-0.5 flex size-3.5 shrink-0 items-center justify-center rounded-[3px] border ${
-                          task.completed
-                            ? "border-[#838c08] bg-[#838c08] text-white"
-                            : "border-[#d5d6cf] bg-white"
-                        }`}
-                      >
-                        {task.completed && <PiCheck className="size-3" />}
-                      </button>
-
-                      <span
-                        className={
-                          task.completed
-                            ? "text-[#838c08] line-through"
-                            : "text-neutral-600"
-                        }
-                      >
-                        {task.title}
-                      </span>
-                    </div>
-                  ))}
-
-                  {tasks.length === 0 && (
-                    <p className="py-6 text-center text-sm text-neutral-500">
-                      No tasks yet. Add your first task.
-                    </p>
-                  )}
-                </div>
-              )}
-
-              {updateTask.isError && (
-                <p className="mt-3 text-xs text-red-600">
-                  Could not update the task. Please try again.
-                </p>
-              )}
-            </div>
-
-            {/* Time tracker — existing design preserved */}
-            <div className="relative flex min-h-[300px] min-w-0 flex-col overflow-hidden rounded-2xl bg-[#e8f811] p-4 text-neutral-700 sm:min-h-[315px]">
-              <div className="pointer-events-none absolute -right-12 -top-16 size-64 rounded-full bg-[#838c08]" />
-
-              <div className="pointer-events-none absolute -bottom-28 -left-16 size-80 rounded-full bg-[#e2f11a] shadow-xs" />
-
-              <div className="relative z-10 flex items-center justify-between gap-2">
-                <h2 className="text-sm font-semibold">Time tracker</h2>
-
-                <button
-                  type="button"
-                  aria-label="Timer options"
-                  className="text-white font-bold p-1.5 cursor-pointer"
-                >
-                  <PiDotsThreeVertical className="size-5" />
-                </button>
-              </div>
-
-              <div className="relative z-10 flex flex-1 flex-col items-center justify-center">
-                <p className="text-3xl font-light tracking-tight sm:text-4xl">
-                  04:21:58
-                </p>
-
-                <p className="mt-3 text-center text-[11px] text-neutral-800">
-                  {timerRunning
-                    ? "Focus session in progress"
-                    : "Timer paused"}
-                </p>
-              </div>
-
-              <div className="relative z-10 flex items-center justify-center gap-3 pb-1">
-                <button
-                  type="button"
-                  onClick={() => setTimerRunning((running) => !running)}
-                  aria-label={timerRunning ? "Pause timer" : "Resume timer"}
-                  className="flex size-10 items-center justify-center rounded-full bg-white text-[#24251f] shadow-sm transition hover:scale-105 cursor-pointer"
-                >
-                  {timerRunning ? (
-                    <PiPauseFill className="size-4" />
-                  ) : (
-                    <PiPlus className="size-4" />
-                  )}
-                </button>
-
-                <button
-                  type="button"
-                  onClick={() => setTimerRunning(false)}
-                  aria-label="Stop timer"
-                  className="flex size-10 items-center justify-center rounded-full bg-[#ff493f] text-white shadow-sm transition hover:scale-105 cursor-pointer"
-                >
-                  <PiStopFill className="size-4" />
-                </button>
-              </div>
-            </div>
-          </div>
-
-          {/* Right column: Activity */}
-          <div className="flex min-w-0 flex-col gap-4 xl:col-span-5">
-            {/* Activity */}
-            <div className="rounded-2xl bg-[#080808] p-4 text-white shadow-sm sm:p-5">
-              <div className="mb-4 flex items-center justify-between">
-                <h2 className="text-sm font-semibold">Activity</h2>
-
-                <div className="flex items-center gap-3 text-[13px]">
-                  <button
-                    type="button"
-                    className="border-b-2 border-[#e4f222] pb-1 text-white cursor-pointer"
-                  >
-                    weekly
-                  </button>
-
-                  <button
-                    type="button"
-                    className="pb-1 text-[#888880] hover:text-white cursor-pointer"
-                  >
-                    daily
-                  </button>
-                </div>
-              </div>
-
-              <div className="grid grid-cols-1 gap-5 rounded-xl bg-[#191919] p-4 sm:grid-cols-2 sm:items-center">
-                <div className="space-y-4">
-                  <div>
-                    <p className="mb-1 text-[12px] text-[#b1b1a9]">
-                      <span className="mr-2 inline-block h-2.5 w-0.5 bg-[#ffb51b]" />
-                      Working hours
-                    </p>
-                    <p className="text-2xl font-light">29/40</p>
-                  </div>
-
-                  <div>
-                    <p className="mb-1 text-[12px] text-[#b1b1a9]">
-                      <span className="mr-2 inline-block h-2.5 w-0.5 bg-[#22c5bd]" />
-                      Tasks completed
-                    </p>
-                    <p className="text-2xl font-light">
-                      {completedTasks}/{tasks.length}
-                    </p>
-                  </div>
-
-                  <div>
-                    <p className="mb-1 text-[12px] text-[#b1b1a9]">
-                      <span className="mr-2 inline-block h-2.5 w-0.5 bg-[#d0a7ff]" />
-                      Projects completed
-                    </p>
-                    <p className="text-2xl font-light">4/7</p>
-                  </div>
-                </div>
-
-                {/* Circular activity indicators — existing design preserved */}
-                <div className="flex items-center justify-center py-2">
-                  <div className="relative size-36 sm:size-40">
-                    <div
-                      className="absolute inset-0 rounded-full"
-                      style={{
-                        background:
-                          "conic-gradient(#ffb51b 0deg 260deg, #414141 260deg 360deg)",
-                        mask: "radial-gradient(farthest-side, transparent calc(100% - 4px), #000 calc(100% - 3px))",
-                        WebkitMask:
-                          "radial-gradient(farthest-side, transparent calc(100% - 4px), #000 calc(100% - 3px))",
-                      }}
-                    />
-
-                    <div
-                      className="absolute inset-[12px] rounded-full"
-                      style={{
-                        background:
-                          "conic-gradient(#22c5bd 0deg 235deg, #414141 235deg 360deg)",
-                        mask: "radial-gradient(farthest-side, transparent calc(100% - 4px), #000 calc(100% - 3px))",
-                        WebkitMask:
-                          "radial-gradient(farthest-side, transparent calc(100% - 4px), #000 calc(100% - 3px))",
-                      }}
-                    />
-
-                    <div
-                      className="absolute inset-[24px] rounded-full"
-                      style={{
-                        background:
-                          "conic-gradient(#20b7f0 0deg 275deg, #414141 275deg 360deg)",
-                        mask: "radial-gradient(farthest-side, transparent calc(100% - 4px), #000 calc(100% - 3px))",
-                        WebkitMask:
-                          "radial-gradient(farthest-side, transparent calc(100% - 4px), #000 calc(100% - 3px))",
-                      }}
-                    />
-
-                    <div className="absolute inset-0 flex items-center justify-center">
-                      <div className="size-5 rounded-full bg-[#191919]" />
-                    </div>
-                  </div>
-                </div>
-              </div>
-
-              <div className="mt-3 flex justify-center gap-1">
-                <span className="h-1 w-3 rounded-full bg-white" />
-                <span className="h-1 w-3 rounded-full bg-[#565656]" />
-              </div>
-            </div>
-          </div>
-        </section>
-
-        {/* Bottom row: Reminder and Assigned Tasks */}
-        <section className="grid grid-cols-1 items-start gap-4 md:grid-cols-2">
-          {/* Meeting reminder — existing design preserved */}
-          <div className="w-full min-w-0 rounded-2xl bg-neutral-100 p-4">
-            <div className="mb-4 flex items-center justify-between">
-              <h2 className="text-[15px] font-semibold">Reminder</h2>
-
-              <div className="flex gap-1">
-                <button
-                  type="button"
-                  aria-label="Previous reminder"
-                  className="rounded-full border border-[#ededE7] p-1 hover:bg-[#f5f5f0] cursor-pointer"
-                >
-                  <PiCaretLeft className="size-3" />
-                </button>
-
-                <button
-                  type="button"
-                  aria-label="Next reminder"
-                  className="rounded-full border border-[#ededE7] p-1 hover:bg-[#f5f5f0] cursor-pointer"
-                >
-                  <PiCaretRight className="size-3" />
-                </button>
-              </div>
-            </div>
-
-            <div className="rounded-xl bg-[#f8f8f5] p-3">
-              <div className="flex items-start justify-between gap-2">
-                <div>
-                  <p className="text-sm font-medium">Today&apos;s Meeting</p>
-                  <p className="mt-1 text-[12px] text-neutral-500">
-                    Meeting with marketing team
-                  </p>
-                </div>
-
-                <PiVideoCamera className="size-5 text-[#838c08]" />
-              </div>
-
-              <div className="mt-5 flex items-end justify-between gap-2">
-                <div>
-                  <p className="mb-1 text-[12px] text-[#92938a]">People</p>
-
-                  <div className="flex -space-x-2">
-                    {["A", "J", "M", "S"].map((person, index) => (
-                      <div
-                        key={person}
-                        className="flex size-6 items-center justify-center rounded-full border-2 border-white text-[9px] font-semibold text-[#55564c]"
-                        style={{
-                          backgroundColor: [
-                            "#d9e7d4",
-                            "#e9d9cf",
-                            "#d8e6ef",
-                            "#e6d9ed",
-                          ][index],
-                        }}
-                      >
-                        {person}
-                      </div>
-                    ))}
-                  </div>
-                </div>
-
-                <div className="rounded-md bg-[#fdfeec] px-2 py-1 text-[11px] text-[#838c08]">
-                  <PiClock className="mr-1 inline size-3" />
-                  13:00–13:45
-                </div>
-              </div>
-            </div>
-          </div>
-
-          {/* Assigned tasks — now backed by the tasks API */}
-          <div className="w-full min-w-0 rounded-2xl bg-neutral-100 p-4 shadow-[0_2px_8px_rgba(0,0,0,0.025)] sm:p-5">
-            <div className="mb-4 flex items-center justify-between">
-              <h2 className="text-[15px] font-semibold text-neutral-700">
-                Tasks I&apos;ve assigned
-              </h2>
-
-              <button
-                type="button"
-                aria-label="Add assigned task"
-                onClick={() => setShowTaskInput(true)}
-                className="rounded-full border border-[#e8e8e1] p-1.5 hover:bg-[#f5f5f0] cursor-pointer"
+            return (
+              <article
+                key={item.label}
+                className="rounded-2xl bg-neutral-100 p-4 sm:p-5"
               >
-                <PiPlus className="size-3.5" />
-              </button>
+                <div className="flex items-center justify-between gap-3">
+                  <p className="text-xs text-neutral-500 sm:text-sm">
+                    {item.label}
+                  </p>
+
+                  <span className="flex size-8 items-center justify-center rounded-xl bg-white text-[#838c08]">
+                    <Icon className="size-4" />
+                  </span>
+                </div>
+
+                <p className="mt-3 text-2xl font-semibold tracking-tight text-neutral-950">
+                  {tasksLoading || remindersLoading ? "—" : item.value}
+                </p>
+              </article>
+            );
+          })}
+        </section>
+
+        {/* Main dashboard */}
+        <section className="grid grid-cols-1 items-start gap-4 xl:grid-cols-12">
+          {/* Tasks */}
+          <div className="min-w-0 rounded-2xl bg-neutral-100 p-4 shadow-xs sm:p-5 xl:col-span-7 max-h-[350px] overflow-y-auto">
+            <div className="mb-4 flex flex-wrap items-center justify-between gap-3">
+              <div>
+                <h2 className="text-base font-semibold tracking-tight">
+                  Your tasks
+                </h2>
+                <p className="mt-1 text-xs text-neutral-500">
+                  Keep track of what needs your attention.
+                </p>
+              </div>
+
+              <Button
+                type="button"
+                size="sm"
+                onClick={() =>
+                  setShowTaskInput((current) => !current)
+                }
+                className="h-9 gap-2 bg-[#838c08] text-white hover:bg-[#707807]"
+              >
+                <Plus className="size-4" />
+                Add task
+              </Button>
             </div>
 
-            <div className="mb-3 flex gap-5 border-b border-[#efefe9]">
-              {["Upcoming", "Overdue", "Completed"].map((tab) => (
+            {showTaskInput && (
+              <form
+                onSubmit={handleCreateTask}
+                className="mb-4 flex gap-2"
+              >
+                <input
+                  value={newTaskTitle}
+                  onChange={(event) =>
+                    setNewTaskTitle(event.target.value)
+                  }
+                  placeholder="What do you need to do?"
+                  maxLength={250}
+                  autoFocus
+                  className="h-10 min-w-0 flex-1 rounded-lg border border-neutral-300 bg-white px-3 text-sm outline-none transition focus:border-[#838c08] focus:ring-2 focus:ring-[#838c08]/10"
+                />
+
+                <Button
+                  type="submit"
+                  disabled={
+                    !newTaskTitle.trim() || createTask.isPending
+                  }
+                  className="h-10 bg-[#838c08] text-white hover:bg-[#707807]"
+                >
+                  {createTask.isPending ? "Saving..." : "Save"}
+                </Button>
+              </form>
+            )}
+
+            {createTask.isError && (
+              <p className="mb-3 text-xs text-red-600">
+                Could not create the task. Please try again.
+              </p>
+            )}
+
+            <div className="mb-4 flex gap-5 overflow-x-auto border-b border-[#e8e8e1]">
+              {taskFilters.map((filter) => (
                 <button
-                  key={tab}
+                  key={filter}
                   type="button"
-                  onClick={() => setActiveTab(tab)}
-                  className={`pb-2 text-[13px] transition cursor-pointer ${
-                    activeTab === tab
-                      ? "border-b-2 border-[#838c08] font-medium text-[#838c08]"
-                      : "text-neutral-500 hover:text-[#33342d]"
+                  onClick={() => setActiveTaskFilter(filter)}
+                  className={`shrink-0 pb-2 text-xs transition ${
+                    activeTaskFilter === filter
+                      ? "border-b-2 border-[#838c08] font-semibold text-[#838c08]"
+                      : "text-neutral-500 hover:text-neutral-800"
                   }`}
                 >
-                  {tab}
+                  {filter}
+                  <span className="ml-1.5 text-[10px] text-neutral-400">
+                    {filter === "Upcoming"
+                      ? tasks.filter(
+                          (task) =>
+                            !task.completed &&
+                            !isTaskOverdue(task),
+                        ).length
+                      : filter === "Overdue"
+                        ? overdueTasks.length
+                        : completedTasks.length}
+                  </span>
                 </button>
               ))}
             </div>
 
-            <div className="space-y-1">
-              {tasksLoading ? (
-                <p className="py-6 text-center text-xs text-[#92938a]">
-                  Loading tasks...
+            {tasksLoading ? (
+              <div className="py-10 text-center text-sm text-neutral-500">
+                Loading your tasks...
+              </div>
+            ) : tasksError ? (
+              <div className="py-10 text-center">
+                <p className="text-sm text-red-600">
+                  Could not load your tasks.
                 </p>
-              ) : tasksError ? (
-                <p className="py-6 text-center text-xs text-red-600">
-                  Could not load tasks.
+                <p className="mt-1 text-xs text-neutral-500">
+                  Please refresh the page and try again.
                 </p>
-              ) : (
-                <>
-                  {visibleTasks.map((task, index) => (
-                    <div
-                      key={task.id}
-                      className="flex items-center gap-3 rounded-lg px-3 py-3 transition hover:bg-primary/10 cursor-pointer"
+              </div>
+            ) : visibleTasks.length === 0 ? (
+              <div className="rounded-xl bg-white px-4 py-10 text-center">
+                <ListTodo className="mx-auto size-7 text-neutral-400" />
+                <p className="mt-3 text-sm font-medium text-neutral-700">
+                  {activeTaskFilter === "Completed"
+                    ? "No completed tasks yet"
+                    : activeTaskFilter === "Overdue"
+                      ? "You're all caught up"
+                      : "No upcoming tasks"}
+                </p>
+                <p className="mt-1 text-xs text-neutral-500">
+                  {activeTaskFilter === "Upcoming"
+                    ? "Add a task to start organizing your work."
+                    : "Tasks in this section will appear here."}
+                </p>
+              </div>
+            ) : (
+              <div className="space-y-1">
+                {visibleTasks.slice(0, 6).map((task) => (
+                  <article
+                    key={task.id}
+                    className="flex items-start gap-3 rounded-xl px-3 py-3 transition hover:bg-white"
+                  >
+                    <button
+                      type="button"
+                      onClick={() => void handleToggleTask(task)}
+                      disabled={updateTask.isPending}
+                      aria-label={
+                        task.completed
+                          ? `Reopen ${task.title}`
+                          : `Complete ${task.title}`
+                      }
+                      className={`mt-0.5 flex size-5 shrink-0 items-center justify-center rounded-md border transition ${
+                        task.completed
+                          ? "border-[#838c08] bg-[#838c08] text-white"
+                          : "border-neutral-300 bg-white text-transparent hover:border-[#838c08]"
+                      }`}
                     >
-                      <div
-                        className="flex size-5 shrink-0 items-center justify-center rounded-[5px] text-[10px] font-semibold text-white"
-                        style={{
-                          backgroundColor: task.completed
-                            ? "#23bf80"
-                            : "#fb6544",
-                        }}
-                      >
-                        {task.completed ? (
-                          <PiCheck className="size-3" />
-                        ) : (
-                          index + 1
-                        )}
-                      </div>
+                      {task.completed && (
+                        <Check className="size-3.5" />
+                      )}
+                    </button>
 
+                    <div className="min-w-0 flex-1">
                       <p
-                        className={`min-w-0 flex-1 truncate text-[13px] ${
+                        className={`break-words text-sm font-medium ${
                           task.completed
                             ? "text-neutral-400 line-through"
-                            : "text-neutral-600"
+                            : "text-neutral-800"
                         }`}
                       >
                         {task.title}
                       </p>
 
-                      <div className="hidden w-1/3 max-w-36 items-center gap-2 sm:flex">
-                        <div className="h-1.5 flex-1 overflow-hidden rounded-full bg-neutral-300">
-                          <div
-                            className="h-full rounded-full bg-[#838c08]"
-                            style={{
-                              width: `${task.completed ? 100 : 0}%`,
-                            }}
-                          />
-                        </div>
-
-                        <span className="w-8 text-right text-[10px] text-[#66675f]">
-                          {task.completed ? 100 : 0}%
+                      <div className="mt-1.5 flex flex-wrap items-center gap-2">
+                        <span className="rounded-md bg-white px-2 py-1 text-[10px] text-neutral-500">
+                          {task.category}
                         </span>
-                      </div>
 
-                      <div className="flex shrink-0 -space-x-2">
-                        {[0, 1]
-                          .slice(0, index % 2 === 0 ? 2 : 1)
-                          .map((n) => (
-                            <div
-                              key={n}
-                              className="flex size-6 items-center justify-center rounded-full border border-[#fdfeec] bg-[#fdfeec] text-[8px] font-semibold text-neutral-700"
-                            >
-                              {n === 0 ? "A" : "M"}
-                            </div>
-                          ))}
+                        <span
+                          className={`rounded-md px-2 py-1 text-[10px] ${
+                            task.priority === "High"
+                              ? "bg-red-50 text-red-600"
+                              : task.priority === "Medium"
+                                ? "bg-orange-50 text-orange-600"
+                                : "bg-neutral-200 text-neutral-600"
+                          }`}
+                        >
+                          {task.priority}
+                        </span>
+
+                        {task.dueAt && (
+                          <span
+                            className={`flex items-center gap-1 text-[10px] ${
+                              isTaskOverdue(task)
+                                ? "text-red-600"
+                                : "text-neutral-400"
+                            }`}
+                          >
+                            <Clock3 className="size-3" />
+                            {formatDate(task.dueAt)}
+                          </span>
+                        )}
                       </div>
                     </div>
-                  ))}
+                  </article>
+                ))}
+              </div>
+            )}
 
-                  {visibleTasks.length === 0 && (
-                    <p className="py-6 text-center text-xs text-[#92938a]">
-                      No tasks in this section yet.
-                    </p>
-                  )}
-                </>
+            {updateTask.isError && (
+              <p className="mt-3 text-xs text-red-600">
+                Could not update the task. Please try again.
+              </p>
+            )}
+
+            <div className="mt-4 border-t border-[#e8e8e1] pt-3">
+              <Link
+                href="/tasks"
+                className="inline-flex items-center gap-2 text-xs font-medium text-[#838c08] transition hover:text-[#707807]"
+              >
+                View all tasks
+                <ArrowRight className="size-3.5" />
+              </Link>
+            </div>
+          </div>
+
+          {/* Workspace activity */}
+          <div className="min-w-0 rounded-2xl bg-neutral-100 text-card p-4  sm:p-5 xl:col-span-5">
+            <div className="flex items-start justify-between gap-3">
+              <div>
+                <h2 className="text-base font-semibold">
+                  Workspace activity
+                </h2>
+                <p className="mt-1 text-xs text-[#a4a49d]">
+                  Activity recorded over the last 7 days.
+                </p>
+              </div>
+
+              <button
+                type="button"
+                onClick={() => void refreshWorkspaceActivity()}
+                disabled={activityLoading || sessionsLoading}
+                aria-label="Refresh workspace activity"
+                className="rounded-lg p-2 text-[#b8b8b0] transition hover:bg-white/10 hover:text-white disabled:opacity-50"
+              >
+                <RefreshCw className="size-4" />
+              </button>
+            </div>
+
+            <div className="mt-5 grid grid-cols-2 gap-3">
+              <div className="rounded-xl bg-white p-3">
+                <p className="text-[11px] text-neutral-400">
+                  Active sessions
+                </p>
+                <p className="mt-2 text-xl font-light">
+                  {sessionsLoading ? "—" : activeSessions.length}
+                </p>
+              </div>
+
+              <div className="rounded-xl bg-white p-3">
+                <p className="text-[11px] text-[#aaa99f]">
+                  Recorded active time
+                </p>
+                <p className="mt-2 text-xl font-light">
+                  {sessionsLoading
+                    ? "—"
+                    : formatDuration(totalActiveSeconds)}
+                </p>
+              </div>
+            </div>
+
+            <div className="mt-5">
+              <div className="mb-3 flex items-center justify-between">
+                <p className="text-xs font-medium text-neutral-500">
+                  Recorded events
+                </p>
+                <span className="text-xs text-neutral-400">
+                  {activityLoading ? "—" : activityEvents.length} total
+                </span>
+              </div>
+
+              {activityError || sessionsError ? (
+                <div className="rounded-xl bg-white p-5 text-center">
+                  <p className="text-xs text-[#d4d4ce]">
+                    Workspace activity could not be loaded.
+                  </p>
+                </div>
+              ) : activityLoading ? (
+                <div className="flex h-36 items-center justify-center text-xs text-[#aaa99f]">
+                  Loading activity...
+                </div>
+              ) : activityEvents.length === 0 ? (
+                <div className="rounded-xl bg-white px-4 py-8 text-center">
+                  <Activity className="mx-auto size-6 text-[#aaa99f]" />
+                  <p className="mt-2 text-xs text-[#d4d4ce]">
+                    No workspace activity recorded yet.
+                  </p>
+                  <p className="mt-1 text-[11px] text-[#888880]">
+                    Connect a workspace to start tracking activity.
+                  </p>
+                </div>
+              ) : (
+                <div className="rounded-xl bg-white px-3 pb-3 pt-4">
+                  <div className="flex h-28 items-end justify-between gap-2">
+                    {activityByDay.map((day) => {
+                      const height =
+                        day.count === 0
+                          ? 4
+                          : Math.max(
+                              8,
+                              (day.count / maxActivityCount) * 100,
+                            );
+
+                      return (
+                        <div
+                          key={day.key}
+                          className="flex h-full min-w-0 flex-1 flex-col items-center justify-end gap-2"
+                          title={`${day.count} activity events`}
+                        >
+                          <div className="flex h-full w-full items-end justify-center">
+                            <div
+                              className="w-full max-w-6 rounded-t-md bg-primary transition-all"
+                              style={{ height: `${height}%` }}
+                            />
+                          </div>
+                          <span className="text-[10px] text-[#aaa99f]">
+                            {day.label}
+                          </span>
+                        </div>
+                      );
+                    })}
+                  </div>
+                </div>
               )}
+            </div>
+
+            <div className="mt-4 flex items-center justify-between gap-3 border-t border-white/10 pt-4">
+              <div>
+                <p className="text-xs font-medium">
+                  {connectedWorkspaces.length} connected workspace
+                  {connectedWorkspaces.length === 1 ? "" : "s"}
+                </p>
+                <p className="mt-1 text-[10px] text-[#aaa99f]">
+                  With monitoring enabled
+                </p>
+              </div>
+
+              <Link
+                href="/activity"
+                className="inline-flex shrink-0 items-center gap-1.5 text-xs font-medium text-primary hover:underline"
+              >
+                View activity
+                <ArrowRight className="size-3.5" />
+              </Link>
+            </div>
+          </div>
+        </section>
+
+        {/* Reminders and workspace overview */}
+        <section className="grid grid-cols-1 gap-4 md:grid-cols-2">
+          {/* Reminders */}
+          <div className="min-w-0 rounded-2xl bg-neutral-100 p-4 sm:p-5">
+            <div className="mb-4 flex items-center justify-between gap-3">
+              <div>
+                <h2 className="text-base font-semibold">
+                  Your reminders
+                </h2>
+                <p className="mt-1 text-xs text-neutral-500">
+                  Your active reminder rules and schedules.
+                </p>
+              </div>
+
+              <Link
+                href="/reminders"
+                className="inline-flex shrink-0 items-center gap-1.5 text-xs font-medium text-[#838c08] hover:underline"
+              >
+                Manage
+                <ArrowRight className="size-3.5" />
+              </Link>
+            </div>
+
+            {remindersLoading ? (
+              <div className="py-8 text-center text-xs text-neutral-500">
+                Loading reminders...
+              </div>
+            ) : remindersError ? (
+              <div className="py-8 text-center text-xs text-red-600">
+                Could not load your reminders.
+              </div>
+            ) : upcomingReminders.length === 0 ? (
+              <div className="rounded-xl bg-white px-4 py-8 text-center">
+                <Bell className="mx-auto size-6 text-neutral-400" />
+                <p className="mt-2 text-sm font-medium text-neutral-700">
+                  No active reminders
+                </p>
+                <p className="mt-1 text-xs text-neutral-500">
+                  Create a reminder to stay on top of important work.
+                </p>
+                <Button
+                  size="sm"
+                  className="mt-4 h-8 bg-[#838c08] text-white hover:bg-[#707807]"
+                >
+                  <Link href="/reminders">
+                    <Plus className="mr-1.5 size-3.5" />
+                    Create reminder
+                  </Link>
+                </Button>
+              </div>
+            ) : (
+              <div className="space-y-2">
+                {upcomingReminders.map((rule) => {
+                  const Icon = getReminderIcon(rule.type);
+
+                  return (
+                    <article
+                      key={rule.id}
+                      className="flex items-start gap-3 rounded-xl bg-white p-3"
+                    >
+                      <span className="flex size-9 shrink-0 items-center justify-center rounded-lg bg-[#838c08]/10 text-[#838c08]">
+                        <Icon className="size-4" />
+                      </span>
+
+                      <div className="min-w-0 flex-1">
+                        <p className="break-words text-sm font-medium text-neutral-800">
+                          {rule.name}
+                        </p>
+                        <p className="mt-1 text-[11px] leading-5 text-neutral-500">
+                          {getReminderDescription(rule.config)}
+                        </p>
+                        <p className="mt-1 text-[10px] font-medium text-[#838c08]">
+                          {getReminderTiming(rule)}
+                        </p>
+                      </div>
+                    </article>
+                  );
+                })}
+              </div>
+            )}
+          </div>
+
+          {/* Workspace snapshot */}
+          <div className="min-w-0 rounded-2xl bg-neutral-100 p-4 sm:p-5">
+            <div className="mb-4 flex items-center justify-between gap-3">
+              <div>
+                <h2 className="text-base font-semibold">
+                  Workspace snapshot
+                </h2>
+                <p className="mt-1 text-xs text-neutral-500">
+                  Your connected development environments.
+                </p>
+              </div>
+
+              <Monitor className="size-5 text-[#838c08]" />
+            </div>
+
+            {workspacesLoading ? (
+              <div className="py-8 text-center text-xs text-neutral-500">
+                Loading workspaces...
+              </div>
+            ) : workspaces.length === 0 ? (
+              <div className="rounded-xl bg-white px-4 py-8 text-center">
+                <Monitor className="mx-auto size-6 text-neutral-400" />
+                <p className="mt-2 text-sm font-medium text-neutral-700">
+                  No workspaces connected
+                </p>
+                <p className="mt-1 text-xs text-neutral-500">
+                  Connect VS Code to start tracking your development activity.
+                </p>
+                <Button
+                  size="sm"
+                  className="mt-4 h-8 bg-[#838c08] text-white hover:bg-[#707807]"
+                >
+                  <Link href="/integrations">
+                    Connect workspace
+                    <ArrowRight className="ml-1.5 size-3.5" />
+                  </Link>
+                </Button>
+              </div>
+            ) : (
+              <div className="space-y-2">
+                {workspaces.slice(0, 4).map((workspace) => (
+                  <article
+                    key={workspace.id}
+                    className="flex items-center justify-between gap-3 rounded-xl bg-white p-3"
+                  >
+                    <div className="flex min-w-0 items-center gap-3">
+                      <span className="flex size-9 shrink-0 items-center justify-center rounded-lg bg-[#838c08]/10 text-[#838c08]">
+                        <Monitor className="size-4" />
+                      </span>
+
+                      <div className="min-w-0">
+                        <p className="truncate text-sm font-medium text-neutral-800">
+                          {workspace.name}
+                        </p>
+                        <p className="mt-1 text-[10px] capitalize text-neutral-500">
+                          {workspace.provider.replace("_", " ")}
+                        </p>
+                      </div>
+                    </div>
+
+                    <span
+                      className={`shrink-0 rounded-full px-2.5 py-1 text-[10px] font-medium ${
+                        workspace.status === "connected" &&
+                        workspace.monitoringEnabled
+                          ? "bg-green-50 text-green-700"
+                          : "bg-neutral-100 text-neutral-500"
+                      }`}
+                    >
+                      {workspace.status === "connected" &&
+                      workspace.monitoringEnabled
+                        ? "Monitoring"
+                        : workspace.status === "connected"
+                          ? "Connected"
+                          : "Disconnected"}
+                    </span>
+                  </article>
+                ))}
+              </div>
+            )}
+
+            <div className="mt-4 border-t border-[#e8e8e1] pt-3">
+              <Link
+                href="/integrations"
+                className="inline-flex items-center gap-2 text-xs font-medium text-[#838c08] transition hover:text-[#707807]"
+              >
+                Manage integrations
+                <ArrowRight className="size-3.5" />
+              </Link>
             </div>
           </div>
         </section>

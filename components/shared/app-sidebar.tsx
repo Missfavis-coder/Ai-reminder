@@ -59,9 +59,9 @@ const navMain = [
         icon: PiNotebook,
       },
       {
-        title: "Inbox",
-        url: "/inbox",
-        icon: PiEnvelopeSimple,
+        title: "Reminders",
+        url: "/reminders",
+        icon: PiBell,
       },
       {
         title: "Integration",
@@ -69,21 +69,18 @@ const navMain = [
         icon: PiPlugsConnected,
       },
       {
-        title: "Goals",
-        url: "/goals",
-        icon: PiFlag,
+        title: "Inbox",
+        url: "/inbox",
+        icon: PiEnvelopeSimple,
       },
+     
       {
         title: "Activity",
         url: "/activity",
         icon: PiChartBar,
       },     
 
-      {
-        title: "Reminders",
-        url: "/reminders",
-        icon: PiBell,
-      },
+
 
     ],
   },

@@ -4,8 +4,7 @@ import { eq } from "drizzle-orm";
 
 import { db } from "@/lib/server/db";
 import { users } from "@/lib/server/db/schema";
-import { getCurrentUserId } from
-  "@/lib/server/auth/session";
+import { getCurrentUserId } from "@/lib/server/auth/session";
 
 export async function GET() {
   try {
@@ -21,6 +20,7 @@ export async function GET() {
     const [user] = await db
       .select({
         id: users.id,
+        name: users.name,
         email: users.email,
         timezone: users.timezone,
       })
@@ -36,8 +36,8 @@ export async function GET() {
     }
 
     return NextResponse.json({ user });
-  } catch {
-    console.error("Current-user lookup failed.");
+  } catch (error) {
+    console.error("Current-user lookup failed:", error);
 
     return NextResponse.json(
       { error: "Unable to retrieve your account." },

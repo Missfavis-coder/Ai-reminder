@@ -1,16 +1,15 @@
 
 import "server-only";
 
-import { and, eq, inArray, isNotNull } from "drizzle-orm";
+import { and, eq } from "drizzle-orm";
 
 import { db } from "@/lib/server/db";
-import {notificationChannels,reminderRules} from "@/lib/server/db/schema";
+import { reminderRules } from "@/lib/server/db/schema";
 
 import { generateReminderMessage } from "@/lib/server/ai/reminder-generator";
 import { reminderRuleConfigSchema } from "@/lib/server/rules/definition";
 import { evaluateReminderRule } from "@/lib/server/rules/evaluator";
-import { createReminderJob } from "@/lib/server/reminders/create-job";
-import { createInAppNotification } from "@/lib/server/notifications/create-in-app-notification";
+import { scheduleReminderNotifications } from "@/lib/server/reminders/notification-scheduler";
 
 type SessionSnapshot = {
   sessionId: string;
@@ -91,84 +90,33 @@ export async function evaluateSessionRules(input: {
 
     due++;
 
-    const inboxNotification = await createInAppNotification({
-      userId,
-      title: rule.name,
-      description: rule.description?.trim()
-        ? `${rule.description.trim()}\n\n${result.reason}`
-        : result.reason,
-      sourceKey: result.idempotencyKey,
-    });
-
-    if (inboxNotification.created) {
-      inAppNotificationsCreated++;
-    }
-
-    const selectedChannelIds = [
-      ...new Set(config.channelIds ?? []),
-    ];
-
-    if (selectedChannelIds.length === 0) {
-      continue;
-    }
-
-    // Only verified, enabled WhatsApp channels are currently supported
-    // by the notification dispatcher.
-    const eligibleChannels = await db
-      .select({
-        id: notificationChannels.id,
-        type: notificationChannels.type,
-      })
-      .from(notificationChannels)
-      .where(
-        and(
-          eq(notificationChannels.userId, userId),
-          inArray(notificationChannels.id, selectedChannelIds),
-          eq(notificationChannels.enabled, true),
-          isNotNull(notificationChannels.consentGrantedAt),
-          isNotNull(notificationChannels.verifiedAt),
-        ),
-      );
-
-    const deliverableChannels = eligibleChannels.filter(
-      (channel) => channel.type === "whatsapp",
-    );
-
-    if (deliverableChannels.length === 0) {
-      console.info(
-        "Activity reminder created in Inbox, but no selected verified WhatsApp channel is available.",
-        { ruleId: rule.id },
-      );
-      continue;
-    }
-
     const message = await generateReminderMessage({
       ruleName: rule.name,
       reason: result.reason,
       personalize: true,
     });
 
-    for (const channel of deliverableChannels) {
-      const created = await createReminderJob({
-        userId,
-        ruleId: rule.id,
-        channelId: channel.id,
-        scheduledAt: now,
-        idempotencyKey: `${result.idempotencyKey}:${channel.id}`,
-        payload: {
-          title: rule.name,
-          description: rule.description ?? "",
-          message,
-          reason: result.reason,
-          workspaceId: session.workspaceId,
-          sessionId: session.sessionId,
-        },
-      });
+    const scheduled = await scheduleReminderNotifications({
+      userId,
+      ruleId: rule.id,
+      title: rule.name,
+      description: rule.description,
+      reason: result.reason,
+      sourceKey: result.idempotencyKey,
+      scheduledAt: now,
+      channelIds: config.channelIds,
+      message,
+      payload: {
+        workspaceId: session.workspaceId,
+        sessionId: session.sessionId,
+      },
+    });
 
-      if (created.created) {
-        jobsCreated++;
-      }
+    if (scheduled.inAppNotificationCreated) {
+      inAppNotificationsCreated++;
     }
+
+    jobsCreated += scheduled.jobsCreated;
   }
 
   return {

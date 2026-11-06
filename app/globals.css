@@ -124,19 +124,20 @@ body {
    Scrollbar
 ───────────────────────────── */
 
-::-webkit-scrollbar {
-  width: 4px;
-}
-
-::-webkit-scrollbar-track {
-  background: transparent;
-}
-
 ::-webkit-scrollbar-thumb {
   background: #838c08;
   border-radius: 99px;
 }
 
+/* Hide scrollbar while keeping scrolling functional */
+.scrollbar-hide {
+   -ms-overflow-style: none; /* IE and Edge */
+   scrollbar-width: none; /* Firefox */
+ }
+ 
+ .scrollbar-hide::-webkit-scrollbar {
+   display: none; /* Chrome, Safari and Opera */
+ }
 
 /* ─────────────────────────────
    Typography
