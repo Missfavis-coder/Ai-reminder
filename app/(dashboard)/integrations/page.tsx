@@ -20,7 +20,7 @@ import { z } from "zod";
 
 import ChannelIntegration from "@/components/integrations/channel-integration";
 import { Button } from "@/components/ui/button";
-import { WorkspaceSkeleton } from "@/components/integrations/integrations-skeleton";
+import { WorkspaceOverviewSkeleton, WorkspaceSkeleton } from "@/components/integrations/integrations-skeleton";
 
 import {
   useCreateWorkspace,
@@ -217,20 +217,6 @@ export default function IntegrationsPage() {
             </p>
           </div>
 
-          <div className="flex items-center gap-3 rounded-lg border border-border bg-primary px-3 py-2.5 text-white">
-            <span className="flex size-9 items-center justify-center rounded-lg bg-white/15">
-              <PiBellRinging className="size-5" />
-            </span>
-
-            <div>
-              <p className="text-xs font-medium">
-                Integration center
-              </p>
-              <p className="text-[11px]">
-                Manage your connected services
-              </p>
-            </div>
-          </div>
         </section>
 
         {/* Introduction */}
@@ -243,7 +229,7 @@ export default function IntegrationsPage() {
                 Your connections, all in one place
               </h2>
 
-              <p className="mt-1 text-sm leading-6 text-muted-foreground">
+              <p className="mt-1 text-xs leading-6 text-muted-foreground">
                 Connect the environments where your work happens and the
                 channels where you want to receive reminders. Workspace
                 connections provide activity data, while notification
@@ -267,7 +253,7 @@ export default function IntegrationsPage() {
           </div>
 
           {workspacesQuery.isPending ? (
-            <WorkspaceSkeleton />
+            <WorkspaceOverviewSkeleton />
           ) : workspacesQuery.isError ? (
             <div className="rounded-xl border border-border p-5">
               <p className="text-sm text-destructive">
@@ -454,7 +440,7 @@ export default function IntegrationsPage() {
             </div>
 
             {/* Registered workspaces */}
-            <div className="rounded-xl border border-border p-4 sm:p-5">
+            <div className="rounded-xl border border-border  p-4 sm:p-5">
               <div className="flex items-center justify-between gap-3">
                 <div>
                   <h3 className="text-sm font-semibold">
@@ -518,7 +504,7 @@ export default function IntegrationsPage() {
                   </p>
                 </div>
               ) : (
-                <div className="mt-4 space-y-3">
+                <div className="mt-4 space-y-3 max-h-[350px] overflow-y-auto">
                   {workspaces.map((workspace) => (
                     <div
                       key={workspace.id}

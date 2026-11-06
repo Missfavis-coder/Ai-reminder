@@ -4,19 +4,14 @@ import { desc, eq } from "drizzle-orm";
 import { z, ZodError } from "zod";
 
 import { db } from "@/lib/server/db";
-import {
-  tasks,
-  reminderRules,
-  notificationJobs,
-  notificationChannels,
-} from "@/lib/server/db/schema";
+import { tasks } from "@/lib/server/db/schema";
 import { getCurrentUserId } from "@/lib/server/auth/session";
+import { syncTaskReminder } from "@/lib/server/reminders/task-reminder-service";
 
 const createTaskSchema = z.object({
   title: z.string().trim().min(1).max(250),
   status: z.enum(["To Do", "In Progress", "Completed"]).default("To Do"),
   description: z.string().trim().max(2000).optional(),
-  
   dueAt: z.string().datetime().optional(),
   priority: z.enum(["Low", "Medium", "High"]).default("Medium"),
   category: z.string().trim().min(1).max(100).default("General"),
@@ -85,14 +80,33 @@ export async function POST(request: NextRequest) {
 
     const input = createTaskSchema.parse(await request.json());
 
+    const dueAt = input.dueAt
+      ? new Date(input.dueAt)
+      : null;
+
+    const reminderAt = input.reminderAt
+      ? new Date(input.reminderAt)
+      : null;
+
     if (
       input.reminderEnabled &&
-      input.reminderAt &&
-      input.dueAt &&
-      new Date(input.reminderAt) > new Date(input.dueAt)
+      reminderAt &&
+      dueAt &&
+      reminderAt > dueAt
     ) {
       return NextResponse.json(
         { error: "Reminder time cannot be after the task deadline." },
+        { status: 400 },
+      );
+    }
+
+    if (
+      input.reminderEnabled &&
+      reminderAt &&
+      reminderAt <= new Date()
+    ) {
+      return NextResponse.json(
+        { error: "Reminder time must be in the future." },
         { status: 400 },
       );
     }
@@ -105,14 +119,12 @@ export async function POST(request: NextRequest) {
           title: input.title,
           description: input.description || null,
           status: input.status,
-completed: input.status === "Completed",
-          dueAt: input.dueAt ? new Date(input.dueAt) : null,
+          completed: input.status === "Completed",
+          dueAt,
           priority: input.priority,
           category: input.category,
           reminderEnabled: input.reminderEnabled,
-          reminderAt: input.reminderAt
-            ? new Date(input.reminderAt)
-            : null,
+          reminderAt,
           reminderChannelIds: input.reminderChannelIds,
         })
         .returning();
@@ -121,69 +133,19 @@ completed: input.status === "Completed",
         throw new Error("Task creation failed.");
       }
 
-      if (!input.reminderEnabled || !input.reminderAt) {
-        return { task };
-      }
-
-      const channels = await tx
-        .select()
-        .from(notificationChannels)
-        .where(eq(notificationChannels.userId, userId));
-
-      const selectedChannels = input.reminderChannelIds.map((id) => {
-        const channel = channels.find((item) => item.id === id);
-
-        if (
-          !channel ||
-          !channel.enabled ||
-          !channel.verifiedAt ||
-          !channel.consentGrantedAt
-        ) {
-          throw new Error(
-            "Every selected channel must belong to you, be enabled, verified, and consented.",
-          );
-        }
-
-        return channel;
-      });
-
-      const [rule] = await tx
-        .insert(reminderRules)
-        .values({
+      await syncTaskReminder(
+        {
           userId,
-          name: `Task reminder: ${task.title}`,
-          type: "fixed_time",
-          config: {
-            type: "fixed_time",
-            scheduledAt: input.reminderAt,
-          },
-          status: "active",
           taskId: task.id,
-        })
-        .returning();
-
-      if (!rule) {
-        throw new Error("Could not create task reminder rule.");
-      }
-
-      for (const channel of selectedChannels) {
-        await tx.insert(notificationJobs).values({
-          userId,
-          ruleId: rule.id,
-          channelId: channel.id,
-          
-          scheduledAt: new Date(input.reminderAt),
-          idempotencyKey: `task:${task.id}:reminder:${new Date(input.reminderAt).getTime()}:channel:${channel.id}`,
-          payload: {
-            kind: "task_reminder",
-            taskId: task.id,
-            title: task.title,
-            description: task.description,
-            category: task.category,
-            priority: task.priority,
-          },
-        });
-      }
+          title: task.title,
+          description: task.description,
+          reminderEnabled:
+            input.reminderEnabled && input.status !== "Completed",
+          reminderAt,
+          reminderChannelIds: input.reminderChannelIds,
+        },
+        tx,
+      );
 
       return { task };
     });

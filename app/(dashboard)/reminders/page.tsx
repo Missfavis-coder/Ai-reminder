@@ -430,7 +430,7 @@ export default function RemindersPage() {
       <div className="grid md:grid-cols-2 grid-cols-1 gap-4">
       <section
         id="create-reminder"
-        className="max-h-[500px] overflow-y-auto rounded-2xl bg-neutral-100 p-4 shadow-sm sm:p-6"
+        className="rounded-2xl bg-neutral-100 p-4 shadow-sm sm:p-6"
       >
         <div className="mb-5 flex items-center gap-3">
           <div className="flex h-9 w-9 items-center justify-center rounded-xl bg-primary/10 text-primary">
@@ -447,7 +447,7 @@ export default function RemindersPage() {
           </div>
         </div>
 
-        <form onSubmit={handleSubmit} className="space-y-5">
+        <form onSubmit={handleSubmit} className="space-y-5 max-h-[500px] overflow-y-auto scrollbar-hide ">
           {/* Reminder name */}
           <div className="space-y-2">
             <Label htmlFor="reminder-name" className="text-sm font-semibold tracking-wide">
@@ -496,7 +496,7 @@ export default function RemindersPage() {
               </p>
             </div>
 
-            <div className="-mx-4 overflow-x-auto px-4 pb-2 sm:-mx-6 sm:px-6">
+            <div className="-mx-4 overflow-x-auto scrollbar-hide px-4 pb-2 sm:-mx-6 sm:px-6">
               <div className="flex w-max gap-2">
                 {reminderTypes.map((item) => {
                   const Icon = item.icon;
@@ -872,7 +872,7 @@ export default function RemindersPage() {
         )}
 
         {!isLoading && !isError && rules.length > 0 && (
-          <div className="">
+          <div className="space-y-3 max-h-[400px] overflow-y-auto scrollbar-hide">
             {rules.map((rule) => {
               const ruleType = reminderTypes.find(
                 (item) => item.value === rule.type,
@@ -883,7 +883,7 @@ export default function RemindersPage() {
               return (
                 <article
                   key={rule.id}
-                  className="rounded-xl border bg-neutral-100 p-4 transition-colors hover:bg-muted/20"
+                  className="rounded-xl bg-neutral-100 p-4 transition-colors hover:bg-muted/20"
                 >
                   <div className="flex items-start gap-3">
                     <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-primary/10 text-primary">
