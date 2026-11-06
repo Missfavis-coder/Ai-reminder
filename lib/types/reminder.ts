@@ -10,21 +10,25 @@ export type ReminderRuleConfig =
       thresholdSeconds: number;
       workspaceId?: string;
       repeat?: boolean;
+      channelIds?: string[];
     }
   | {
       type: "inactivity";
       thresholdSeconds: number;
       workspaceId?: string;
       repeat?: boolean;
+      channelIds?: string[];
     }
   | {
       type: "deadline";
       deadlineAt: string;
       leadTimeSeconds: number;
+      channelIds?: string[];
     }
   | {
       type: "fixed_time";
       scheduledAt: string;
+      channelIds?: string[];
     };
 
 export type ReminderRuleStatus =
@@ -35,7 +39,9 @@ export type ReminderRuleStatus =
 export interface ReminderRule {
   id: string;
   userId: string;
+  taskId?: string | null;
   name: string;
+  description?: string | null;
   type: ReminderRuleType;
   config: ReminderRuleConfig;
   status: ReminderRuleStatus;
@@ -53,6 +59,7 @@ export interface ReminderRuleResponse {
 
 export interface CreateReminderRuleInput {
   name: string;
+  description?: string;
   config: ReminderRuleConfig;
   channelIds: string[];
 }

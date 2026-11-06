@@ -21,6 +21,8 @@ vi.mock("@/lib/server/db/schema", () => ({
   workspaces: {
     id: "id",
     userId: "userId",
+    status: "status",
+    monitoringEnabled: "monitoringEnabled",
   },
 }));
 
@@ -50,7 +52,13 @@ function setupTransaction(insertedEvent: boolean) {
     from: vi.fn().mockReturnThis(),
     where: vi.fn().mockReturnThis(),
     for: vi.fn().mockReturnThis(),
-    limit: vi.fn().mockResolvedValue([{ id: workspaceId }]),
+    limit: vi.fn().mockResolvedValue([
+      {
+        id: workspaceId,
+        status: "connected",
+        monitoringEnabled: true,
+      },
+    ]),
   };
 
   const insertQuery = {

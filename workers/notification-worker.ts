@@ -1,22 +1,16 @@
-
 import "server-only";
 
 import {
   and,
   asc,
   eq,
-  isNotNull,
   lte,
   sql,
 } from "drizzle-orm";
 
 import { db } from "@/lib/server/db";
-import {
-  notificationJobs,
-  notificationChannels,
-} from "@/lib/server/db/schema";
-import { dispatchNotification } from
-  "@/lib/server/notifications/dispatcher";
+import { notificationJobs } from "@/lib/server/db/schema";
+import { dispatchNotification } from "@/lib/server/notifications/dispatcher";
 
 const BATCH_SIZE = 10;
 
@@ -40,10 +34,7 @@ function getMessage(payload: unknown): string | null {
   return normalized.length > 0 ? normalized : null;
 }
 
-async function claimNotificationJob(
-  jobId: string,
-  now: Date,
-) {
+async function claimNotificationJob(jobId: string, now: Date) {
   const [job] = await db
     .update(notificationJobs)
     .set({
@@ -113,10 +104,7 @@ export async function processDueNotificationJobs() {
   let skipped = 0;
 
   for (const candidate of candidates) {
-    const job = await claimNotificationJob(
-      candidate.id,
-      new Date(),
-    );
+    const job = await claimNotificationJob(candidate.id, new Date());
 
     if (!job) {
       skipped++;
@@ -135,61 +123,20 @@ export async function processDueNotificationJobs() {
         continue;
       }
 
-      let channelId = job.channelId;
-
-      if (!channelId) {
-        const [channel] = await db
-          .select({ id: notificationChannels.id })
-          .from(notificationChannels)
-          .where(
-            and(
-              eq(notificationChannels.userId, job.userId),
-              eq(notificationChannels.type, "whatsapp"),
-              eq(notificationChannels.enabled, true),
-              isNotNull(notificationChannels.consentGrantedAt),
-              isNotNull(notificationChannels.verifiedAt),
-            ),
-          )
-          .limit(1);
-
-        if (!channel) {
-          const updated = await markJobFailed(
-            job.id,
-            "No eligible notification channel is configured.",
-          );
-
-          if (updated) failed++;
-          else skipped++;
-
-          continue;
-        }
-
-        channelId = channel.id;
-
-        const [updated] = await db
-          .update(notificationJobs)
-          .set({
-            channelId,
-            updatedAt: new Date(),
-          })
-          .where(
-            and(
-              eq(notificationJobs.id, job.id),
-              eq(notificationJobs.status, "processing"),
-            ),
-          )
-          .returning({ id: notificationJobs.id });
-
-        if (!updated) {
-          skipped++;
-          continue;
-        }
+      // Never silently choose a channel the user did not select.
+      if (!job.channelId) {
+        await markJobFailed(
+          job.id,
+         "No eligible notification channel is configured."
+        );
+        failed++;
+        continue;
       }
 
       await dispatchNotification({
         jobId: job.id,
         userId: job.userId,
-        channelId,
+        channelId: job.channelId,
         message,
       });
 
@@ -201,16 +148,13 @@ export async function processDueNotificationJobs() {
           : "Unknown delivery error";
 
       try {
-        const updated = await markJobFailed(
-          job.id,
-          errorMessage,
-        );
+        const updated = await markJobFailed(job.id, errorMessage);
 
         if (updated) {
           failed++;
         } else {
-          // Another operation may have changed the job to review,
-          // sent, failed, or another non-processing status.
+          // The dispatcher may already have moved the job to review
+          // after an uncertain provider outcome.
           skipped++;
         }
       } catch {

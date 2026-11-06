@@ -1,22 +1,45 @@
-
 import { randomUUID } from "node:crypto";
 import { NextRequest, NextResponse } from "next/server";
 import { ZodError, z } from "zod";
-import { and, desc, eq, inArray, isNotNull } from "drizzle-orm";
-import { notificationChannels } from "@/lib/server/db/schema";
+import {
+  and,
+  desc,
+  eq,
+  inArray,
+  isNotNull,
+} from "drizzle-orm";
 
 import { db } from "@/lib/server/db";
-import { reminderRules } from "@/lib/server/db/schema";
-import { getCurrentUserId } from "@/lib/server/auth/session";
-import { reminderRuleConfigSchema } from
-  "@/lib/server/rules/definition";
+import {
+  notificationChannels,
+  reminderRules,
+} from "@/lib/server/db/schema";
 
-//export const //dynamic = "force-dynamic";
+import { getCurrentUserId } from "@/lib/server/auth/session";
+import {
+  reminderRuleConfigSchema,
+} from "@/lib/server/rules/definition";
 
 const createRuleSchema = z.object({
   name: z.string().trim().min(1).max(120),
+
+  description: z
+    .string()
+    .trim()
+    .max(2000)
+    .optional()
+    .default(""),
+
   config: reminderRuleConfigSchema,
-  channelIds: z.array(z.string().uuid()).min(1).max(5),
+
+  channelIds: z
+    .array(z.string().uuid())
+    .min(1)
+    .max(5)
+    .refine(
+      (ids) => new Set(ids).size === ids.length,
+      "A notification channel cannot be selected more than once.",
+    ),
 });
 
 export async function GET() {
@@ -37,8 +60,8 @@ export async function GET() {
       .orderBy(desc(reminderRules.createdAt));
 
     return NextResponse.json({ rules });
-  } catch {
-    console.error("Failed to list reminder rules.");
+  } catch (error) {
+    console.error("Failed to list reminder rules:", error);
 
     return NextResponse.json(
       { error: "Could not load reminder rules." },
@@ -62,30 +85,32 @@ export async function POST(request: NextRequest) {
     const input = createRuleSchema.parse(body);
 
     const selectedChannels = await db
-  .select({
-    id: notificationChannels.id,
-    type: notificationChannels.type,
-  })
-  .from(notificationChannels)
-  .where(
-    and(
-      eq(notificationChannels.userId, userId),
-      eq(notificationChannels.enabled, true),
-      isNotNull(notificationChannels.verifiedAt),
-      isNotNull(notificationChannels.consentGrantedAt),
-      inArray(notificationChannels.id, input.channelIds),
-    ),
-  );
+      .select({
+        id: notificationChannels.id,
+      })
+      .from(notificationChannels)
+      .where(
+        and(
+          eq(notificationChannels.userId, userId),
+          eq(notificationChannels.enabled, true),
+          isNotNull(notificationChannels.verifiedAt),
+          isNotNull(notificationChannels.consentGrantedAt),
+          inArray(
+            notificationChannels.id,
+            input.channelIds,
+          ),
+        ),
+      );
 
-if (selectedChannels.length !== new Set(input.channelIds).size) {
-  return NextResponse.json(
-    {
-      error:
-        "One or more selected channels are unavailable, unverified, or not connected to your account.",
-    },
-    { status: 400 },
-  );
-}
+    if (selectedChannels.length !== input.channelIds.length) {
+      return NextResponse.json(
+        {
+          error:
+            "One or more selected channels are unavailable, unverified, or not connected to your account.",
+        },
+        { status: 400 },
+      );
+    }
 
     const [rule] = await db
       .insert(reminderRules)
@@ -93,11 +118,14 @@ if (selectedChannels.length !== new Set(input.channelIds).size) {
         id: randomUUID(),
         userId,
         name: input.name,
+        description: input.description || null,
         type: input.config.type,
+
         config: {
           ...input.config,
           channelIds: input.channelIds,
         },
+
         status: "active",
       })
       .returning();
@@ -109,7 +137,10 @@ if (selectedChannels.length !== new Set(input.channelIds).size) {
       );
     }
 
-    return NextResponse.json({ rule }, { status: 201 });
+    return NextResponse.json(
+      { rule },
+      { status: 201 },
+    );
   } catch (error) {
     if (error instanceof ZodError) {
       return NextResponse.json(
@@ -121,7 +152,7 @@ if (selectedChannels.length !== new Set(input.channelIds).size) {
       );
     }
 
-    console.error("Failed to create reminder rule.");
+    console.error("Failed to create reminder rule:", error);
 
     return NextResponse.json(
       { error: "Could not create reminder rule." },
