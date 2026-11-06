@@ -365,6 +365,57 @@ updatedAt: timestamp("updated_at", {
       index("notification_jobs_user_idx").on(table.userId),
     ],
   );
+
+  export const inAppNotifications = pgTable(
+    "in_app_notifications",
+    {
+      id: uuid("id").defaultRandom().primaryKey(),
+  
+      userId: text("user_id")
+        .notNull()
+        .references(() => users.id, { onDelete: "cascade" }),
+  
+      title: varchar("title", { length: 250 }).notNull(),
+  
+      description: text("description").notNull(),
+  
+      category: varchar("category", { length: 30 })
+        .notNull()
+        .default("Reminder"),
+  
+      icon: varchar("icon", { length: 30 })
+        .notNull()
+        .default("reminder"),
+  
+      actionLabel: varchar("action_label", { length: 100 }),
+  
+      actionHref: varchar("action_href", { length: 500 }),
+  
+      // Used to prevent duplicate notifications.
+      sourceKey: varchar("source_key", { length: 300 }).unique(),
+  
+      readAt: timestamp("read_at", {
+        withTimezone: true,
+      }),
+  
+      createdAt: timestamp("created_at", {
+        withTimezone: true,
+      })
+        .notNull()
+        .defaultNow(),
+    },
+    (table) => [
+      index("in_app_notifications_user_created_idx").on(
+        table.userId,
+        table.createdAt,
+      ),
+  
+      index("in_app_notifications_user_read_idx").on(
+        table.userId,
+        table.readAt,
+      ),
+    ],
+  );
   
   export const notificationDeliveries = pgTable(
     "notification_deliveries",

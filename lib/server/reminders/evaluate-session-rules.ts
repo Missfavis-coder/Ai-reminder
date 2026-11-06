@@ -1,16 +1,16 @@
+
 import "server-only";
 
 import { and, eq, inArray, isNotNull } from "drizzle-orm";
 
 import { db } from "@/lib/server/db";
-import {
-  notificationChannels,
-  reminderRules,
-} from "@/lib/server/db/schema";
+import {notificationChannels,reminderRules} from "@/lib/server/db/schema";
+
 import { generateReminderMessage } from "@/lib/server/ai/reminder-generator";
 import { reminderRuleConfigSchema } from "@/lib/server/rules/definition";
 import { evaluateReminderRule } from "@/lib/server/rules/evaluator";
 import { createReminderJob } from "@/lib/server/reminders/create-job";
+import { createInAppNotification } from "@/lib/server/notifications/create-in-app-notification";
 
 type SessionSnapshot = {
   sessionId: string;
@@ -40,6 +40,7 @@ export async function evaluateSessionRules(input: {
   let evaluated = 0;
   let due = 0;
   let jobsCreated = 0;
+  let inAppNotificationsCreated = 0;
 
   for (const rule of rules) {
     if (
@@ -90,17 +91,29 @@ export async function evaluateSessionRules(input: {
 
     due++;
 
-    const selectedChannelIds = config.channelIds ?? [];
+    const inboxNotification = await createInAppNotification({
+      userId,
+      title: rule.name,
+      description: rule.description?.trim()
+        ? `${rule.description.trim()}\n\n${result.reason}`
+        : result.reason,
+      sourceKey: result.idempotencyKey,
+    });
+
+    if (inboxNotification.created) {
+      inAppNotificationsCreated++;
+    }
+
+    const selectedChannelIds = [
+      ...new Set(config.channelIds ?? []),
+    ];
 
     if (selectedChannelIds.length === 0) {
-      console.error("Reminder rule has no selected notification channels", {
-        ruleId: rule.id,
-      });
       continue;
     }
 
-    // Only WhatsApp is currently supported by the notification dispatcher.
-    // Do not create jobs for channels that the dispatcher cannot deliver to.
+    // Only verified, enabled WhatsApp channels are currently supported
+    // by the notification dispatcher.
     const eligibleChannels = await db
       .select({
         id: notificationChannels.id,
@@ -122,8 +135,8 @@ export async function evaluateSessionRules(input: {
     );
 
     if (deliverableChannels.length === 0) {
-      console.error(
-        "No selected, verified WhatsApp notification channel is available for this reminder rule.",
+      console.info(
+        "Activity reminder created in Inbox, but no selected verified WhatsApp channel is available.",
         { ruleId: rule.id },
       );
       continue;
@@ -143,6 +156,8 @@ export async function evaluateSessionRules(input: {
         scheduledAt: now,
         idempotencyKey: `${result.idempotencyKey}:${channel.id}`,
         payload: {
+          title: rule.name,
+          description: rule.description ?? "",
           message,
           reason: result.reason,
           workspaceId: session.workspaceId,
@@ -160,5 +175,6 @@ export async function evaluateSessionRules(input: {
     evaluated,
     due,
     jobsCreated,
+    inAppNotificationsCreated,
   };
 }
