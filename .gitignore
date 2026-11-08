@@ -42,3 +42,7 @@ next-env.d.ts
 
 # VS Code extension dependencies
 extensions/ai-reminder-vscode/node_modules/
+
+
+#  CLI dependencies
+cli/ai-reminder-cli/node_modules/
