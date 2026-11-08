@@ -1,3 +1,4 @@
+
 import { NextRequest, NextResponse } from "next/server";
 import { and, desc, eq } from "drizzle-orm";
 import { ZodError, z } from "zod";
@@ -8,7 +9,7 @@ import { db } from "@/lib/server/db";
 import { workspaces } from "@/lib/server/db/schema";
 
 const createWorkspaceSchema = z.object({
-  provider: z.enum(["browser", "vscode"]),
+  provider: z.enum(["browser", "vscode", "desktop"]),
   name: z.string().trim().min(1).max(200),
   deviceId: z.string().trim().min(1).max(200).optional(),
 });
