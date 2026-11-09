@@ -7,8 +7,6 @@ import { getGeminiClient, getGeminiModel } from "@/lib/server/ai/client";
 import { buildParseReminderPrompt } from "@/lib/server/ai/prompts/parse-reminder";
 import { reminderRuleConfigSchema } from "@/lib/server/rules/definition";
 
-export const runtime = "nodejs";
-export const dynamic = "force-dynamic";
 
 const requestSchema = z.object({
   request: z.string().trim().min(3).max(500),

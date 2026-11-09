@@ -1,6 +1,7 @@
 export interface CliConfig {
     apiUrl?: string;
     deviceId?: string;
+    token?: string;
     workspaces?: Record<string, string>;
 }
 export declare function getConfig(): Promise<CliConfig>;

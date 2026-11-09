@@ -1,12 +1,9 @@
 import { randomUUID } from "node:crypto";
-import { mkdir, readFile, writeFile } from "node:fs/promises";
+import { chmod, mkdir, readFile, writeFile, } from "node:fs/promises";
 import * as path from "node:path";
 import envPaths from "env-paths";
-import keytar from "keytar";
 const paths = envPaths("ai-reminder", { suffix: "" });
 const CONFIG_FILE = path.join(paths.config, "config.json");
-const KEYCHAIN_SERVICE = "ai-reminder-cli";
-const KEYCHAIN_ACCOUNT = "access-token";
 export async function getConfig() {
     try {
         const contents = await readFile(CONFIG_FILE, "utf8");
@@ -22,8 +19,13 @@ export async function saveConfig(updates) {
         ...current,
         ...updates,
     };
-    await mkdir(paths.config, { recursive: true });
+    await mkdir(paths.config, {
+        recursive: true,
+        mode: 0o700,
+    });
+    await chmod(paths.config, 0o700);
     await writeFile(CONFIG_FILE, JSON.stringify(next, null, 2), { mode: 0o600 });
+    await chmod(CONFIG_FILE, 0o600);
 }
 export async function getOrCreateDeviceId() {
     const config = await getConfig();
@@ -35,13 +37,16 @@ export async function getOrCreateDeviceId() {
     return deviceId;
 }
 export async function saveToken(token) {
-    await keytar.setPassword(KEYCHAIN_SERVICE, KEYCHAIN_ACCOUNT, token);
+    await saveConfig({ token });
 }
 export async function getToken() {
-    return keytar.getPassword(KEYCHAIN_SERVICE, KEYCHAIN_ACCOUNT);
+    const config = await getConfig();
+    return config.token ?? null;
 }
 export async function deleteToken() {
-    await keytar.deletePassword(KEYCHAIN_SERVICE, KEYCHAIN_ACCOUNT);
+    const config = await getConfig();
+    delete config.token;
+    await saveConfig(config);
 }
 export async function saveWorkspaceId(workspacePath, workspaceId) {
     const config = await getConfig();

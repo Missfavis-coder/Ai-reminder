@@ -1,21 +1,21 @@
 
 import { randomUUID } from "node:crypto";
-import { mkdir, readFile, writeFile } from "node:fs/promises";
+import {
+  chmod,
+  mkdir,
+  readFile,
+  writeFile,
+} from "node:fs/promises";
 import * as path from "node:path";
-
 import envPaths from "env-paths";
-import keytar from "keytar";
 
 const paths = envPaths("ai-reminder", { suffix: "" });
-
 const CONFIG_FILE = path.join(paths.config, "config.json");
-
-const KEYCHAIN_SERVICE = "ai-reminder-cli";
-const KEYCHAIN_ACCOUNT = "access-token";
 
 export interface CliConfig {
   apiUrl?: string;
   deviceId?: string;
+  token?: string;
   workspaces?: Record<string, string>;
 }
 
@@ -32,19 +32,25 @@ export async function saveConfig(
   updates: Partial<CliConfig>,
 ): Promise<void> {
   const current = await getConfig();
-
   const next: CliConfig = {
     ...current,
     ...updates,
   };
 
-  await mkdir(paths.config, { recursive: true });
+  await mkdir(paths.config, {
+    recursive: true,
+    mode: 0o700,
+  });
+
+  await chmod(paths.config, 0o700);
 
   await writeFile(
     CONFIG_FILE,
     JSON.stringify(next, null, 2),
     { mode: 0o600 },
   );
+
+  await chmod(CONFIG_FILE, 0o600);
 }
 
 export async function getOrCreateDeviceId(): Promise<string> {
@@ -62,25 +68,18 @@ export async function getOrCreateDeviceId(): Promise<string> {
 }
 
 export async function saveToken(token: string): Promise<void> {
-  await keytar.setPassword(
-    KEYCHAIN_SERVICE,
-    KEYCHAIN_ACCOUNT,
-    token,
-  );
+  await saveConfig({ token });
 }
 
 export async function getToken(): Promise<string | null> {
-  return keytar.getPassword(
-    KEYCHAIN_SERVICE,
-    KEYCHAIN_ACCOUNT,
-  );
+  const config = await getConfig();
+  return config.token ?? null;
 }
 
 export async function deleteToken(): Promise<void> {
-  await keytar.deletePassword(
-    KEYCHAIN_SERVICE,
-    KEYCHAIN_ACCOUNT,
-  );
+  const config = await getConfig();
+  delete config.token;
+  await saveConfig(config);
 }
 
 export async function saveWorkspaceId(
@@ -101,7 +100,6 @@ export async function getWorkspaceId(
   workspacePath: string,
 ): Promise<string | undefined> {
   const config = await getConfig();
-
   return config.workspaces?.[workspacePath];
 }
 
