@@ -171,41 +171,48 @@ export default function DashboardPage() {
     }
   }, [tasks, activeTaskFilter]);
 
-  const activityByDay = useMemo(() => {
-    const today = new Date();
+  const [activityByDay, setActivityByDay] = useState<
+  { key: string; label: string; count: number }[]
+>([]);
 
-    return Array.from({ length: 7 }, (_, index) => {
-      const date = new Date(today);
-      date.setHours(0, 0, 0, 0);
-      date.setDate(today.getDate() - (6 - index));
+useEffect(() => {
+  const today = new Date();
 
-      const key = [
-        date.getFullYear(),
-        String(date.getMonth() + 1).padStart(2, "0"),
-        String(date.getDate()).padStart(2, "0"),
+  const days = Array.from({ length: 7 }, (_, index) => {
+    const date = new Date(today);
+
+    date.setHours(0, 0, 0, 0);
+    date.setDate(today.getDate() - (6 - index));
+
+    const key = [
+      date.getFullYear(),
+      String(date.getMonth() + 1).padStart(2, "0"),
+      String(date.getDate()).padStart(2, "0"),
+    ].join("-");
+
+    const count = activityEvents.filter((event) => {
+      const eventDate = new Date(event.occurredAt);
+
+      const eventKey = [
+        eventDate.getFullYear(),
+        String(eventDate.getMonth() + 1).padStart(2, "0"),
+        String(eventDate.getDate()).padStart(2, "0"),
       ].join("-");
 
-      const count = activityEvents.filter((event) => {
-        const eventDate = new Date(event.occurredAt);
+      return eventKey === key;
+    }).length;
 
-        const eventKey = [
-          eventDate.getFullYear(),
-          String(eventDate.getMonth() + 1).padStart(2, "0"),
-          String(eventDate.getDate()).padStart(2, "0"),
-        ].join("-");
+    return {
+      key,
+      label: date.toLocaleDateString(undefined, {
+        weekday: "short",
+      }),
+      count,
+    };
+  });
 
-        return eventKey === key;
-      }).length;
-
-      return {
-        key,
-        label: date.toLocaleDateString(undefined, {
-          weekday: "short",
-        }),
-        count,
-      };
-    });
-  }, [activityEvents]);
+  setActivityByDay(days);
+}, [activityEvents]);
 
   const maxActivityCount = Math.max(
     1,
