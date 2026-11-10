@@ -17,6 +17,9 @@ import {
   
   export const workspaceProviderEnum = pgEnum("workspace_provider", [
     "vscode",
+    "cursor",
+    "antigravity",
+    "windsurf",
     "desktop",
     "browser",
   ]);
