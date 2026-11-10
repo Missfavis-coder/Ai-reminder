@@ -1,12 +1,13 @@
 
 import { NextRequest, NextResponse } from "next/server";
 import { and, eq } from "drizzle-orm";
-
+import { connection } from "next/server";
 import { db } from "@/lib/server/db";
 import { extensionAuthRequests } from "@/lib/server/db/schema";
 import { safeHashCompare } from "@/lib/server/auth/extension-auth";
 
 export async function GET(request: NextRequest) {
+  await connection();
   try {
     const requestId = request.nextUrl.searchParams.get("requestId");
     const authorization = request.headers.get("authorization");
