@@ -1,4 +1,3 @@
-
 import { createHash, randomBytes, randomUUID } from "node:crypto";
 import open from "open";
 
@@ -8,7 +7,10 @@ import {
   getToken,
   saveConfig,
   saveToken,
+  type IdeProvider,
 } from "./config.js";
+
+type WorkspaceProvider = IdeProvider | "desktop";
 
 type ActivityEventType =
   | "workspace_focused"
@@ -26,7 +28,6 @@ interface ApiError {
 async function getError(response: Response): Promise<string> {
   try {
     const body = (await response.json()) as ApiError;
-
     return body.error ?? `HTTP ${response.status}`;
   } catch {
     return `HTTP ${response.status}`;
@@ -66,7 +67,6 @@ export async function login(apiUrlInput: string): Promise<void> {
 
   const verifier = createCodeVerifier();
   const challenge = createCodeChallenge(verifier);
-
   const deviceId = await getOrCreateDeviceId();
 
   const requestResponse = await fetch(
@@ -106,7 +106,6 @@ export async function login(apiUrlInput: string): Promise<void> {
   console.log("Waiting for account approval...");
 
   const expiresAt = new Date(authRequest.expiresAt).getTime();
-
   let approved = false;
 
   while (Date.now() < expiresAt) {
@@ -214,11 +213,12 @@ export class AiReminderClient {
   async registerWorkspace(
     name: string,
     deviceId: string,
+    provider: WorkspaceProvider,
   ): Promise<{ id: string; name: string }> {
     const result = await this.request<{
       workspace: { id: string; name: string };
     }>("/api/workspaces", "POST", {
-      provider: "desktop",
+      provider,
       name,
       deviceId,
     });

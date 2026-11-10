@@ -1,5 +1,10 @@
-
-export type WorkspaceProvider = "browser" | "vscode" | "desktop";
+export type WorkspaceProvider =
+  | "browser"
+  | "vscode"
+  | "cursor"
+  | "antigravity"
+  | "windsurf"
+  | "desktop";
 
 export type WorkspaceStatus = "connected" | "disconnected";
 

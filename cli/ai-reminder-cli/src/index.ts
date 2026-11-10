@@ -1,4 +1,5 @@
 #!/usr/bin/env node
+
 import { Command } from "commander";
 import { watch } from "chokidar";
 import { basename, resolve } from "node:path";
@@ -12,6 +13,7 @@ import {
   getToken,
   getWorkspaceId,
   saveWorkspaceId,
+  type IdeProvider,
 } from "./config.js";
 
 import {
@@ -23,6 +25,13 @@ const program = new Command();
 
 const HEARTBEAT_MS = 30_000;
 const IDLE_AFTER_MS = 5 * 60_000;
+
+const IDE_PROVIDERS: IdeProvider[] = [
+  "vscode",
+  "cursor",
+  "antigravity",
+  "windsurf",
+];
 
 const ignoredDirectories = new Set([
   ".git",
@@ -40,12 +49,78 @@ function getWorkspacePath(): string {
   return resolve(process.cwd());
 }
 
+function getIdeProvider(explicitIde?: string): IdeProvider {
+  if (explicitIde) {
+    if (IDE_PROVIDERS.includes(explicitIde as IdeProvider)) {
+      return explicitIde as IdeProvider;
+    }
+
+    throw new Error(
+      `Unsupported IDE "${explicitIde}". Choose one of: ${IDE_PROVIDERS.join(", ")}`,
+    );
+  }
+
+  const env = process.env;
+  const termProgram = (env.TERM_PROGRAM ?? "").toLowerCase();
+
+  // Check Cursor before VS Code because Cursor is VS Code-based.
+  if (
+    env.CURSOR_TRACE_ID ||
+    env.CURSOR_SESSION_ID ||
+    env.CURSOR ||
+    termProgram === "cursor"
+  ) {
+    return "cursor";
+  }
+
+  if (
+    env.WINDSURF ||
+    env.WINDSURF_SESSION ||
+    env.WINDSURF_WORKSPACE ||
+    env.CODEIUM_WIND_SURF ||
+    termProgram === "windsurf"
+  ) {
+    return "windsurf";
+  }
+
+  if (
+    env.ANTIGRAVITY ||
+    env.ANTIGRAVITY_AGENT ||
+    env.ANTIGRAVITY_SESSION ||
+    termProgram === "antigravity"
+  ) {
+    return "antigravity";
+  }
+
+  if (
+    env.VSCODE_PID ||
+    env.VSCODE_IPC_HOOK_CLI ||
+    env.VSCODE_GIT_IPC_HANDLE ||
+    termProgram === "vscode"
+  ) {
+    return "vscode";
+  }
+
+  throw new Error(
+    [
+      "Could not reliably detect which IDE opened this terminal.",
+      "",
+      "Please specify your IDE manually:",
+      "  ai-reminder connect --ide vscode",
+      "  ai-reminder connect --ide cursor",
+      "  ai-reminder connect --ide antigravity",
+      "  ai-reminder connect --ide windsurf",
+    ].join("\n"),
+  );
+}
+
 function getWorkspaceDeviceId(
   root: string,
   deviceId: string,
+  provider: IdeProvider,
 ): string {
   const hash = createHash("sha256")
-    .update(root)
+    .update(`${provider}:${root}`)
     .digest("hex")
     .slice(0, 40);
 
@@ -73,29 +148,33 @@ function shouldIgnore(filePath: string): boolean {
   return false;
 }
 
-async function connectWorkspace(): Promise<void> {
+async function connectWorkspace(ideOption?: string): Promise<void> {
   const root = getWorkspacePath();
+  const provider = getIdeProvider(ideOption);
   const deviceId = await getOrCreateDeviceId();
   const client = await getClient();
 
   const workspace = await client.registerWorkspace(
     basename(root) || root,
-    getWorkspaceDeviceId(root, deviceId),
+    getWorkspaceDeviceId(root, deviceId, provider),
+    provider,
   );
 
-  await saveWorkspaceId(root, workspace.id);
+  await saveWorkspaceId(root, provider, workspace.id);
 
-  console.log(`\nWorkspace connected: ${workspace.name}`);
+  console.log(`\nIDE: ${provider}`);
+  console.log(`Workspace connected: ${workspace.name}`);
   console.log(`Workspace ID: ${workspace.id}`);
 }
 
-async function startMonitoring(): Promise<void> {
+async function startMonitoring(ideOption?: string): Promise<void> {
   const root = getWorkspacePath();
-  const connectedWorkspaceId = await getWorkspaceId(root);
+  const provider = getIdeProvider(ideOption);
+  const connectedWorkspaceId = await getWorkspaceId(root, provider);
 
   if (!connectedWorkspaceId) {
     throw new Error(
-      "This project is not connected. Run ai-reminder connect first.",
+      `This project is not connected under ${provider}. Run ai-reminder connect --ide ${provider} first.`,
     );
   }
 
@@ -103,7 +182,8 @@ async function startMonitoring(): Promise<void> {
 
   await client.setMonitoring(connectedWorkspaceId, true);
 
-  console.log(`\nMonitoring workspace: ${basename(root)}`);
+  console.log(`\nIDE: ${provider}`);
+  console.log(`Monitoring workspace: ${basename(root)}`);
   console.log("Watching saved-file changes and sending heartbeats.");
   console.log("Press Ctrl+C to stop monitoring.\n");
 
@@ -123,12 +203,22 @@ async function startMonitoring(): Promise<void> {
       | "workspace_stopped",
     metadata: Record<string, unknown> = {},
   ): void {
+    const workspaceId = connectedWorkspaceId;
+  
+    if (!workspaceId) {
+      return;
+    }
+  
     eventQueue = eventQueue
       .then(() =>
         client.sendActivity(
-          connectedWorkspaceId!,
+          workspaceId,
           eventType,
-          metadata,
+          {
+            ...metadata,
+            source: "ai-reminder-cli",
+            ide: provider,
+          },
         ),
       )
       .catch((error: unknown) => {
@@ -140,9 +230,7 @@ async function startMonitoring(): Promise<void> {
       });
   }
 
-  emit("workspace_focused", {
-    source: "ai-reminder-cli",
-  });
+  emit("workspace_focused");
 
   const watcher = watch(root, {
     persistent: true,
@@ -151,23 +239,23 @@ async function startMonitoring(): Promise<void> {
   });
 
   watcher.on("all", (event, filePath) => {
-    if (shuttingDown || shouldIgnore(filePath)) {
+    if (
+      shuttingDown ||
+      typeof filePath !== "string" ||
+      shouldIgnore(filePath)
+    ) {
       return;
     }
-
     lastFileActivityAt = Date.now();
 
     if (idle) {
       idle = false;
 
-      emit("idle_ended", {
-        source: "ai-reminder-cli",
-      });
+      emit("idle_ended");
     } else {
       emit("editor_changed", {
         fileName: basename(filePath),
         changeType: event,
-        source: "ai-reminder-cli",
       });
     }
   });
@@ -184,18 +272,14 @@ async function startMonitoring(): Promise<void> {
     if (inactiveFor >= IDLE_AFTER_MS && !idle) {
       idle = true;
 
-      emit("idle_started", {
-        source: "ai-reminder-cli",
-      });
+      emit("idle_started");
 
       console.log("Workspace marked idle.");
       return;
     }
 
     if (!idle) {
-      emit("heartbeat", {
-        source: "ai-reminder-cli",
-      });
+      emit("heartbeat");
     }
   }, HEARTBEAT_MS);
 
@@ -211,9 +295,7 @@ async function startMonitoring(): Promise<void> {
 
       await watcher.close();
 
-      emit("workspace_stopped", {
-        source: "ai-reminder-cli",
-      });
+      emit("workspace_stopped");
 
       await eventQueue;
 
@@ -231,12 +313,12 @@ async function startMonitoring(): Promise<void> {
 
 program
   .name("ai-reminder")
-  .description("Connect your development workspace to AI Reminder.")
-  .version("0.1.0");
+  .description("Connect development workspaces to AI Reminder.")
+  .version("0.2.0");
 
 program
   .command("login")
-  .argument("<website-url>", "Your deployed AI Reminder website URL")
+  .argument("<website-url>", "Your AI Reminder website URL")
   .description("Connect your AI Reminder account")
   .action(async (websiteUrl: string) => {
     await login(websiteUrl);
@@ -245,66 +327,107 @@ program
 program
   .command("connect")
   .description("Register the current project as a workspace")
-  .action(connectWorkspace);
+  .option(
+    "--ide <ide>",
+    "IDE: vscode, cursor, antigravity, or windsurf",
+  )
+  .action(async (options: { ide?: string }) => {
+    await connectWorkspace(options.ide);
+  });
 
 program
   .command("start")
   .description("Start monitoring the current workspace")
-  .action(startMonitoring);
+  .option(
+    "--ide <ide>",
+    "IDE: vscode, cursor, antigravity, or windsurf",
+  )
+  .action(async (options: { ide?: string }) => {
+    await startMonitoring(options.ide);
+  });
 
 program
   .command("stop")
   .description("Stop monitoring the current workspace")
-  .action(async () => {
+  .option(
+    "--ide <ide>",
+    "IDE: vscode, cursor, antigravity, or windsurf",
+  )
+  .action(async (options: { ide?: string }) => {
     const root = getWorkspacePath();
-    const workspaceId = await getWorkspaceId(root);
+    const provider = getIdeProvider(options.ide);
+    const workspaceId = await getWorkspaceId(root, provider);
 
     if (!workspaceId) {
-      throw new Error("This project is not connected.");
+      throw new Error(`No connected ${provider} workspace found.`);
     }
 
     const client = await getClient();
 
     await client.sendActivity(workspaceId, "workspace_stopped", {
       source: "ai-reminder-cli",
+      ide: provider,
     });
 
     await client.setMonitoring(workspaceId, false);
 
-    console.log("Workspace monitoring stopped.");
+    console.log(`${provider} workspace monitoring stopped.`);
   });
 
 program
   .command("disconnect")
   .description("Disconnect the current workspace")
-  .action(async () => {
+  .option(
+    "--ide <ide>",
+    "IDE: vscode, cursor, antigravity, or windsurf",
+  )
+  .action(async (options: { ide?: string }) => {
     const root = getWorkspacePath();
-    const workspaceId = await getWorkspaceId(root);
+    const provider = getIdeProvider(options.ide);
+    const workspaceId = await getWorkspaceId(root, provider);
 
     if (!workspaceId) {
-      throw new Error("This project is not connected.");
+      throw new Error(`No connected ${provider} workspace found.`);
     }
 
     const client = await getClient();
 
     await client.disconnectWorkspace(workspaceId);
-    await deleteWorkspaceId(root);
+    await deleteWorkspaceId(root, provider);
 
-    console.log("Workspace disconnected.");
+    console.log(`${provider} workspace disconnected.`);
   });
 
 program
   .command("status")
   .description("Check your AI Reminder connection")
-  .action(async () => {
+  .option(
+    "--ide <ide>",
+    "IDE: vscode, cursor, antigravity, or windsurf",
+  )
+  .action(async (options: { ide?: string }) => {
     const config = await getConfig();
     const token = await getToken();
-    const workspaceId = await getWorkspaceId(getWorkspacePath());
+
+    let provider: IdeProvider | null = null;
+    let workspaceId: string | undefined;
+
+    try {
+      provider = getIdeProvider(options.ide);
+      workspaceId = await getWorkspaceId(
+        getWorkspacePath(),
+        provider,
+      );
+    } catch {
+      // Status should still show account information when
+      // the CLI is run outside a detectable IDE terminal.
+    }
 
     console.log("\nAI Reminder CLI");
     console.log("------------------------");
     console.log(`Account: ${token ? "Connected" : "Not connected"}`);
     console.log(`Website: ${config.apiUrl ?? "Not configured"}`);
+    console.log(`IDE: ${provider ?? "Not detected"}`);
     console.log(`Workspace: ${workspaceId ?? "Not connected"}`);
     console.log("");
   });
