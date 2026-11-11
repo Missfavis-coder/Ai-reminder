@@ -72,6 +72,16 @@ function sessionStatusClass(status: WorkspaceSession["status"]) {
   }
 }
 
+
+const workspaceProviderLabels: Record<string, string> = {
+  vscode: "Visual Studio Code",
+  cursor: "Cursor",
+  antigravity: "Antigravity",
+  windsurf: "Windsurf",
+  browser: "Browser",
+  desktop: "Desktop",
+};
+
 export default function ActivityPage() {
   const [period, setPeriod] = useState<ActivityPeriod>("7d");
   const [workspaceId, setWorkspaceId] = useState("all");
@@ -173,7 +183,7 @@ export default function ActivityPage() {
 
             {workspaces.map((workspace) => (
               <option key={workspace.id} value={workspace.id}>
-                {workspace.name} ({workspace.provider})
+                {workspace.name} ({workspaceProviderLabels[workspace.provider] ?? workspace.provider})
               </option>
             ))}
           </select>

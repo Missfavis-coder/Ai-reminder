@@ -3,7 +3,6 @@
 
 import { useState, type FormEvent } from "react";
 import {
-  PiBellRinging,
   PiCheckCircle,
   PiCode,
   PiGlobe,
@@ -14,6 +13,7 @@ import {
   PiShieldCheck,
   PiSpinnerGap,
   PiSquaresFour,
+  PiTerminal,
 } from "react-icons/pi";
 import { toast } from "sonner";
 import { z } from "zod";
@@ -21,6 +21,8 @@ import { z } from "zod";
 import ChannelIntegration from "@/components/integrations/channel-integration";
 import { Button } from "@/components/ui/button";
 import { WorkspaceOverviewSkeleton, WorkspaceSkeleton } from "@/components/integrations/integrations-skeleton";
+
+import type { WorkspaceProvider } from "@/lib/types/workspace";
 
 import {
   useCreateWorkspace,
@@ -30,11 +32,28 @@ import {
 } from "@/lib/hooks/use-workspace";
 
 const workspaceSchema = z.object({
-  provider: z.enum(["browser", "vscode"]),
   name: z.string().trim().min(1, "Enter a workspace name.").max(200),
 });
 
-type Provider = "browser" | "vscode";
+type Provider = WorkspaceProvider;
+
+const providerGroups: WorkspaceProvider[] = [
+  "vscode",
+  "cursor",
+  "antigravity",
+  "windsurf",
+  "browser",
+  "desktop",
+];
+
+const providerLabels: Record<WorkspaceProvider, string> = {
+  vscode: "Visual Studio Code",
+  cursor: "Cursor",
+  antigravity: "Antigravity",
+  windsurf: "Windsurf",
+  browser: "Browser",
+  desktop: "Desktop",
+};
 
 function formatDate(value: string | null) {
   if (!value) return "Not available";
@@ -73,13 +92,31 @@ export default function IntegrationsPage() {
     (workspace) => workspace.monitoringEnabled,
   );
 
-  const vscodeWorkspaces = workspaces.filter(
-    (workspace) => workspace.provider === "vscode",
+  const ideWorkspaces = workspaces.filter((workspace) =>
+    ["vscode", "cursor", "antigravity", "windsurf"].includes(
+      workspace.provider,
+    ),
   );
 
-  const browserWorkspaces = workspaces.filter(
-    (workspace) => workspace.provider === "browser",
-  );
+  const groupedWorkspaces = providerGroups
+    .map((groupProvider) => ({
+      provider: groupProvider,
+      workspaces: workspaces.filter(
+        (workspace) => workspace.provider === groupProvider,
+      ),
+    }))
+    .filter((group) => group.workspaces.length > 0);
+
+  const cliCommand = `ai-reminder connect --ide ${provider}`;
+
+  async function copyCliCommand() {
+    try {
+      await navigator.clipboard.writeText(cliCommand);
+      toast.success("CLI command copied.");
+    } catch {
+      toast.error("Could not copy the command. Please copy it manually.");
+    }
+  }
 
   const connectVSCode = () => {
     setShowVSCodeModal(true);
@@ -118,8 +155,11 @@ export default function IntegrationsPage() {
       return;
     }
 
+    if (provider !== "browser") {
+      return;
+    }
+
     const parsed = workspaceSchema.safeParse({
-      provider,
       name: workspaceName,
     });
 
@@ -131,7 +171,10 @@ export default function IntegrationsPage() {
     }
 
     try {
-      await createWorkspace.mutateAsync(parsed.data);
+      await createWorkspace.mutateAsync({
+        provider: "browser",
+        name: parsed.data.name,
+      });
 
       toast.success("Workspace registered successfully.");
       setWorkspaceName("");
@@ -288,13 +331,15 @@ export default function IntegrationsPage() {
                   icon: PiPlayCircle,
                 },
                 {
-                  label: "VS Code",
-                  value: vscodeWorkspaces.length,
+                  label: "IDE workspaces",
+                  value: ideWorkspaces.length,
                   icon: PiCode,
                 },
                 {
-                  label: "Browser",
-                  value: browserWorkspaces.length,
+                  label: "Browser workspaces",
+                  value: workspaces.filter(
+                    (workspace) => workspace.provider === "browser",
+                  ).length,
                   icon: PiGlobe,
                 },
               ].map((item) => {
@@ -375,67 +420,103 @@ export default function IntegrationsPage() {
                     }
                     className="h-10 w-full rounded-lg border border-input bg-background px-3 text-sm outline-none focus:border-ring focus:ring-2 focus:ring-ring/20"
                   >
-                    <option value="vscode">
-                      Visual Studio Code
-                    </option>
-                    <option value="browser">
-                      Browser
-                    </option>
+                    <option value="vscode">Visual Studio Code</option>
+                    <option value="cursor">Cursor</option>
+                    <option value="antigravity">Antigravity</option>
+                    <option value="windsurf">Windsurf</option>
+                    <option value="browser">Browser</option>
                   </select>
                 </div>
 
-                <div className="space-y-1.5">
-                  <label
-                    htmlFor="workspace-name"
-                    className="text-xs font-medium"
-                  >
-                    Workspace name
-                  </label>
+                {provider === "browser" ? (
+                  <>
+                    <div className="space-y-1.5">
+                      <label
+                        htmlFor="workspace-name"
+                        className="text-xs font-medium"
+                      >
+                        Workspace name
+                      </label>
 
-                  <input
-                    id="workspace-name"
-                    value={workspaceName}
-                    onChange={(event) =>
-                      setWorkspaceName(event.target.value)
-                    }
-                    placeholder={
-                      provider === "vscode"
-                        ? "e.g. AI Reminder project"
-                        : "e.g. Research workspace"
-                    }
-                    maxLength={200}
-                    required
-                    className="h-10 w-full rounded-lg border border-input bg-background px-3 text-sm outline-none placeholder:text-muted-foreground focus:border-ring focus:ring-2 focus:ring-ring/20"
-                  />
-                </div>
+                      <input
+                        id="workspace-name"
+                        value={workspaceName}
+                        onChange={(event) => setWorkspaceName(event.target.value)}
+                        placeholder="e.g. Research workspace"
+                        maxLength={200}
+                        required
+                        className="h-10 w-full rounded-lg border border-input bg-background px-3 text-sm outline-none placeholder:text-muted-foreground focus:border-ring focus:ring-2 focus:ring-ring/20"
+                      />
+                    </div>
 
-                <div className="rounded-lg bg-muted/60 p-3">
-                  <p className="text-xs leading-5 text-muted-foreground">
-                    Registering a workspace adds it to your account.
-                    Actual monitoring depends on the connected workspace
-                    agent or client sending activity events to AI Reminder.
-                  </p>
-                </div>
+                    <div className="rounded-lg bg-muted/60 p-3">
+                      <p className="text-xs leading-5 text-muted-foreground">
+                        Registering a browser workspace adds it to your account.
+                        Activity monitoring requires a connected agent to send events.
+                      </p>
+                    </div>
 
-                <Button
-                  type="submit"
-                  disabled={busy || isOpeningVSCode}
-                  className="w-full gap-2"
-                >
-                  {createWorkspace.isPending || isOpeningVSCode ? (
-                    <PiSpinnerGap className="size-4 animate-spin" />
-                  ) : (
-                    <PiPlus className="size-4" />
-                  )}
-
-                  {createWorkspace.isPending
-                    ? "Registering workspace..."
-                    : isOpeningVSCode
-                      ? "Opening VS Code..."
-                      : provider === "vscode"
-                        ? "Connect VS Code"
-                        : "Register workspace"}
-                </Button>
+                    <Button
+                      type="submit"
+                      disabled={busy}
+                      className="w-full gap-2"
+                    >
+                      {createWorkspace.isPending ? (
+                        <PiSpinnerGap className="size-4 animate-spin" />
+                      ) : (
+                        <PiPlus className="size-4" />
+                      )}
+                      {createWorkspace.isPending
+                        ? "Registering workspace..."
+                        : "Register browser workspace"}
+                    </Button>
+                  </>
+                ) : provider === "vscode" ? (
+                  <>
+                    <div className="rounded-lg bg-muted/60 p-3">
+                      <p className="text-xs leading-5 text-muted-foreground">
+                        Connect through the AI Reminder VS Code extension. You will
+                        approve the connection with your AI Reminder account.
+                      </p>
+                    </div>
+                    <Button
+                      type="submit"
+                      disabled={busy || isOpeningVSCode}
+                      className="w-full gap-2"
+                    >
+                      {isOpeningVSCode ? (
+                        <PiSpinnerGap className="size-4 animate-spin" />
+                      ) : (
+                        <PiCode className="size-4" />
+                      )}
+                      {isOpeningVSCode ? "Opening VS Code..." : "Connect VS Code"}
+                    </Button>
+                  </>
+                ) : (
+                  <div className="space-y-3 rounded-lg border border-border p-3">
+                    <div className="flex items-center gap-2">
+                      <PiTerminal className="size-4 text-primary" />
+                      <p className="text-sm font-medium">Connect with the AI Reminder CLI</p>
+                    </div>
+                    <p className="text-xs leading-5 text-muted-foreground">
+                      Open the selected IDE's integrated terminal in your project
+                      folder and run this command. The CLI will authorize your
+                      account and register this IDE-specific workspace.
+                    </p>
+                    <div className="flex items-center gap-2 rounded-md bg-muted p-2">
+                      <code className="min-w-0 flex-1 break-all text-xs">
+                        {cliCommand}
+                      </code>
+                      <Button type="button" size="sm" variant="outline" onClick={() => void copyCliCommand()}>
+                        Copy
+                      </Button>
+                    </div>
+                    <p className="text-[11px] leading-5 text-muted-foreground">
+                      If this is your first time using the CLI, sign in first with
+                      <code className="mx-1">ai-reminder login {"<website-url>"}</code>.
+                    </p>
+                  </div>
+                )}
               </form>
             </div>
 
@@ -499,13 +580,23 @@ export default function IntegrationsPage() {
                   </p>
 
                   <p className="mt-1 text-xs leading-5 text-muted-foreground">
-                    Connect VS Code or register a browser workspace to get
-                    started.
+                    Connect an IDE using its extension or CLI, or register a browser workspace to get started.
                   </p>
                 </div>
               ) : (
                 <div className="mt-4 space-y-3 max-h-[350px] overflow-y-auto">
-                  {workspaces.map((workspace) => (
+                  {groupedWorkspaces.map((group) => (
+                    <section key={group.provider} className="space-y-2">
+                      <div className="flex items-center justify-between border-b border-border pb-2">
+                        <h4 className="text-xs font-semibold tracking-wide">
+                          {providerLabels[group.provider]}
+                        </h4>
+                        <span className="rounded-full bg-secondary px-2 py-0.5 text-[10px] text-muted-foreground">
+                          {group.workspaces.length}
+                        </span>
+                      </div>
+                      <div className="space-y-3">
+                        {group.workspaces.map((workspace) => (
                     <div
                       key={workspace.id}
                       className="rounded-lg border border-border p-3"
@@ -513,10 +604,10 @@ export default function IntegrationsPage() {
                       <div className="flex items-start justify-between gap-3">
                         <div className="flex min-w-0 items-start gap-3">
                           <span className="flex size-9 shrink-0 items-center justify-center rounded-lg bg-secondary">
-                            {workspace.provider === "vscode" ? (
-                              <PiCode className="size-4" />
-                            ) : (
+                            {workspace.provider === "browser" ? (
                               <PiGlobe className="size-4" />
+                            ) : (
+                              <PiCode className="size-4" />
                             )}
                           </span>
 
@@ -526,10 +617,7 @@ export default function IntegrationsPage() {
                             </p>
 
                             <p className="mt-1 text-xs capitalize text-muted-foreground">
-                              {workspace.provider === "vscode"
-                                ? "Visual Studio Code"
-                                : "Browser"}{" "}
-                              workspace
+                              {providerLabels[workspace.provider]} workspace
                             </p>
                           </div>
                         </div>
@@ -633,6 +721,9 @@ export default function IntegrationsPage() {
                         </Button>
                       </div>
                     </div>
+                        ))}
+                      </div>
+                    </section>
                   ))}
                 </div>
               )}

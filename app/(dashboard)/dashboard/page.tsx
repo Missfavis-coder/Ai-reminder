@@ -37,6 +37,24 @@ import { formatDate, getReminderDescription, getReminderIcon, getReminderTiming,
 
 type TaskFilter = "Upcoming" | "Overdue" | "Completed";
 
+const workspaceProviderLabels: Record<string, string> = {
+  vscode: "Visual Studio Code",
+  cursor: "Cursor",
+  antigravity: "Antigravity",
+  windsurf: "Windsurf",
+  browser: "Browser",
+  desktop: "Desktop",
+};
+
+const workspaceProviderOrder = [
+  "vscode",
+  "cursor",
+  "antigravity",
+  "windsurf",
+  "browser",
+  "desktop",
+] as const;
+
 export default function DashboardPage() {
   const [currentDate, setCurrentDate] = useState("");
   const [greeting, setGreeting] = useState("Hello");
@@ -102,6 +120,14 @@ export default function DashboardPage() {
     data: workspaces = [],
     isLoading: workspacesLoading,
   } = useWorkspaces();
+
+  const workspaceGroups = workspaceProviderOrder
+    .map((provider) => ({
+      provider,
+      label: workspaceProviderLabels[provider],
+      workspaces: workspaces.filter((workspace) => workspace.provider === provider),
+    }))
+    .filter((group) => group.workspaces.length > 0);
 
   const {
     data: reminderRules = [],
@@ -816,7 +842,7 @@ useEffect(() => {
                   No workspaces connected
                 </p>
                 <p className="mt-1 text-xs text-neutral-500">
-                  Connect VS Code to start tracking your development activity.
+                  Connect an IDE such as VS Code, Cursor, Antigravity, or Windsurf to start tracking your development activity.
                 </p>
                 <Button
                   size="sm"
@@ -829,43 +855,53 @@ useEffect(() => {
                 </Button>
               </div>
             ) : (
-              <div className="space-y-2">
-                {workspaces.slice(0, 4).map((workspace) => (
-                  <article
-                    key={workspace.id}
-                    className="flex items-center justify-between gap-3 rounded-xl bg-white p-3"
-                  >
-                    <div className="flex min-w-0 items-center gap-3">
-                      <span className="flex size-9 shrink-0 items-center justify-center rounded-lg bg-[#838c08]/10 text-[#838c08]">
-                        <Monitor className="size-4" />
+              <div className="max-h-[360px] space-y-4 overflow-y-auto">
+                {workspaceGroups.map((group) => (
+                  <section key={group.provider} className="space-y-2">
+                    <div className="flex items-center justify-between px-1">
+                      <h3 className="text-[11px] font-semibold uppercase tracking-wide text-neutral-500">
+                        {group.label}
+                      </h3>
+                      <span className="text-[10px] text-neutral-400">
+                        {group.workspaces.length}
                       </span>
-
-                      <div className="min-w-0">
-                        <p className="truncate text-sm font-medium text-neutral-800">
-                          {workspace.name}
-                        </p>
-                        <p className="mt-1 text-[10px] capitalize text-neutral-500">
-                          {workspace.provider.replace("_", " ")}
-                        </p>
-                      </div>
                     </div>
-
-                    <span
-                      className={`shrink-0 rounded-full px-2.5 py-1 text-[10px] font-medium ${
-                        workspace.status === "connected" &&
-                        workspace.monitoringEnabled
-                          ? "bg-green-50 text-green-700"
-                          : "bg-neutral-100 text-neutral-500"
-                      }`}
-                    >
-                      {workspace.status === "connected" &&
-                      workspace.monitoringEnabled
-                        ? "Monitoring"
-                        : workspace.status === "connected"
-                          ? "Connected"
-                          : "Disconnected"}
-                    </span>
-                  </article>
+                    <div className="space-y-2">
+                      {group.workspaces.map((workspace) => (
+                        <article
+                          key={workspace.id}
+                          className="flex items-center justify-between gap-3 rounded-xl bg-white p-3"
+                        >
+                          <div className="flex min-w-0 items-center gap-3">
+                            <span className="flex size-9 shrink-0 items-center justify-center rounded-lg bg-[#838c08]/10 text-[#838c08]">
+                              <Monitor className="size-4" />
+                            </span>
+                            <div className="min-w-0">
+                              <p className="truncate text-sm font-medium text-neutral-800">
+                                {workspace.name}
+                              </p>
+                              <p className="mt-1 text-[10px] text-neutral-500">
+                                {workspaceProviderLabels[workspace.provider] ?? workspace.provider}
+                              </p>
+                            </div>
+                          </div>
+                          <span
+                            className={`shrink-0 rounded-full px-2.5 py-1 text-[10px] font-medium ${
+                              workspace.status === "connected" && workspace.monitoringEnabled
+                                ? "bg-green-50 text-green-700"
+                                : "bg-neutral-100 text-neutral-500"
+                            }`}
+                          >
+                            {workspace.status === "connected" && workspace.monitoringEnabled
+                              ? "Monitoring"
+                              : workspace.status === "connected"
+                                ? "Connected"
+                                : "Disconnected"}
+                          </span>
+                        </article>
+                      ))}
+                    </div>
+                  </section>
                 ))}
               </div>
             )}
