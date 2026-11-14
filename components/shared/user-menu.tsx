@@ -16,7 +16,7 @@ import {
   AvatarFallback,
   AvatarImage,
 } from "../ui/avatar";
-import { Button } from "../ui/button";
+import { buttonVariants } from "../ui/button";
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -63,22 +63,22 @@ export function UserMenu({ user }: UserMenuProps) {
   const initials = getInitials(user.displayName);
 
   return (
-    <DropdownMenu >
-     <DropdownMenuTrigger>
-  <Button
-    variant="ghost"
-    size="icon"
-    aria-label={`Open menu for ${user.displayName}`}
-    className="overflow-hidden rounded-full p-0"
-  >
-    <Avatar className="size-9">
-      {user.avatarUrl ? (
-        <AvatarImage src={user.avatarUrl} alt={user.displayName} />
-      ) : null}
-      <AvatarFallback>{initials}</AvatarFallback>
-    </Avatar>
-  </Button>
-</DropdownMenuTrigger>
+    <DropdownMenu>
+      <DropdownMenuTrigger
+        aria-label={`Open menu for ${user.displayName}`}
+        className={buttonVariants({
+          variant: "ghost",
+          size: "icon",
+          className: "overflow-hidden rounded-full p-0",
+        })}
+      >
+        <Avatar className="size-9">
+          {user.avatarUrl ? (
+            <AvatarImage src={user.avatarUrl} alt={user.displayName} />
+          ) : null}
+          <AvatarFallback>{initials}</AvatarFallback>
+        </Avatar>
+      </DropdownMenuTrigger>
       <DropdownMenuContent align="end" sideOffset={8} className="w-56">
         <DropdownMenuLabel className="flex flex-col gap-0.5">
           <span className="truncate text-sm font-medium text-foreground">

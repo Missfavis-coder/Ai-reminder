@@ -2,6 +2,7 @@ import { CalendarClock, CalendarClockIcon, Clock3, Timer, Zap } from "lucide-rea
 import { ReminderRule, ReminderRuleConfig } from "../types/reminder";
 import { Task } from "../types/tasks";
 
+export const now = new Date();
 export function formatDate(value: string | null | undefined) {
     if (!value) return "No due date";
   
