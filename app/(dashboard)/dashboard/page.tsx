@@ -6,19 +6,24 @@ import {
   Activity,
   ArrowRight,
   Bell,
-  CalendarClock,
   Check,
   CheckCircle2,
-  Circle,
   Clock3,
   ListTodo,
   Monitor,
   Plus,
   RefreshCw,
-  Timer,
-  Zap,
-} from "lucide-react";
 
+} from "lucide-react";
+import {
+  AreaChart,
+  Area,
+  XAxis,
+  YAxis,
+  CartesianGrid,
+  Tooltip,
+  ResponsiveContainer,
+} from "recharts";
 import { Button } from "@/components/ui/button";
 
 import { useCurrentUser } from "@/lib/hooks/use-auth";
@@ -32,9 +37,10 @@ import { useReminderRules } from "@/lib/hooks/use-reminder-rules";
 import { useWorkspaces } from "@/lib/hooks/use-workspace";
 
 import type { Task } from "@/lib/types/tasks";
+
 import { formatDate, getReminderDescription, getReminderIcon, getReminderTiming, getReminderTriggerTime, isTaskOverdue,  formatDuration } from "@/lib/utils/dashboard";
 
-
+const EMPTY_ACTIVITY_EVENTS: never[] = [];
 type TaskFilter = "Upcoming" | "Overdue" | "Completed";
 
 const workspaceProviderLabels: Record<string, string> = {
@@ -62,6 +68,10 @@ export default function DashboardPage() {
   const [showTaskInput, setShowTaskInput] = useState(false);
   const [activeTaskFilter, setActiveTaskFilter] =
     useState<TaskFilter>("Upcoming");
+    const [activityByDay, setActivityByDay] = useState<
+  { key: string; label: string; count: number }[]
+>([]);
+    
 
   useEffect(() => {
     const now = new Date();
@@ -97,7 +107,7 @@ export default function DashboardPage() {
   } = useTasks();
 
   const {
-    data: activityEvents = [],
+    data: activityEvents = EMPTY_ACTIVITY_EVENTS,
     isLoading: activityLoading,
     isError: activityError,
     refetch: refetchActivity,
@@ -197,49 +207,44 @@ export default function DashboardPage() {
     }
   }, [tasks, activeTaskFilter]);
 
-  const [activityByDay, setActivityByDay] = useState<
-  { key: string; label: string; count: number }[]
->([]);
-
-useEffect(() => {
-  const today = new Date();
-
-  const days = Array.from({ length: 7 }, (_, index) => {
-    const date = new Date(today);
-
-    date.setHours(0, 0, 0, 0);
-    date.setDate(today.getDate() - (6 - index));
-
-    const key = [
-      date.getFullYear(),
-      String(date.getMonth() + 1).padStart(2, "0"),
-      String(date.getDate()).padStart(2, "0"),
-    ].join("-");
-
-    const count = activityEvents.filter((event) => {
-      const eventDate = new Date(event.occurredAt);
-
-      const eventKey = [
-        eventDate.getFullYear(),
-        String(eventDate.getMonth() + 1).padStart(2, "0"),
-        String(eventDate.getDate()).padStart(2, "0"),
+  useEffect(() => {
+    const today = new Date();
+  
+    const days = Array.from({ length: 7 }, (_, index) => {
+      const date = new Date(today);
+  
+      date.setHours(0, 0, 0, 0);
+      date.setDate(today.getDate() - (6 - index));
+  
+      const key = [
+        date.getFullYear(),
+        String(date.getMonth() + 1).padStart(2, "0"),
+        String(date.getDate()).padStart(2, "0"),
       ].join("-");
-
-      return eventKey === key;
-    }).length;
-
-    return {
-      key,
-      label: date.toLocaleDateString(undefined, {
-        weekday: "short",
-      }),
-      count,
-    };
-  });
-
-  setActivityByDay(days);
-}, [activityEvents]);
-
+  
+      const count = activityEvents.filter((event) => {
+        const eventDate = new Date(event.occurredAt);
+  
+        const eventKey = [
+          eventDate.getFullYear(),
+          String(eventDate.getMonth() + 1).padStart(2, "0"),
+          String(eventDate.getDate()).padStart(2, "0"),
+        ].join("-");
+  
+        return eventKey === key;
+      }).length;
+  
+      return {
+        key,
+        label: date.toLocaleDateString(undefined, {
+          weekday: "short",
+        }),
+        count,
+      };
+    });
+  
+    setActivityByDay(days);
+  }, [activityEvents]);
   const maxActivityCount = Math.max(
     1,
     ...activityByDay.map((day) => day.count),
@@ -625,27 +630,7 @@ useEffect(() => {
               </button>
             </div>
 
-            <div className="mt-5 grid grid-cols-2 gap-3">
-              <div className="rounded-xl bg-white p-3">
-                <p className="text-[11px] text-neutral-400">
-                  Active sessions
-                </p>
-                <p className="mt-2 text-xl font-light">
-                  {sessionsLoading ? "—" : activeSessions.length}
-                </p>
-              </div>
 
-              <div className="rounded-xl bg-white p-3">
-                <p className="text-[11px] text-[#aaa99f]">
-                  Recorded active time
-                </p>
-                <p className="mt-2 text-xl font-light">
-                  {sessionsLoading
-                    ? "—"
-                    : formatDuration(totalActiveSeconds)}
-                </p>
-              </div>
-            </div>
 
             <div className="mt-5">
               <div className="mb-3 flex items-center justify-between">
@@ -678,37 +663,117 @@ useEffect(() => {
                   </p>
                 </div>
               ) : (
-                <div className="rounded-xl bg-white px-3 pb-3 pt-4">
-                  <div className="flex h-28 items-end justify-between gap-2">
-                    {activityByDay.map((day) => {
-                      const height =
-                        day.count === 0
-                          ? 4
-                          : Math.max(
-                              8,
-                              (day.count / maxActivityCount) * 100,
-                            );
 
-                      return (
-                        <div
-                          key={day.key}
-                          className="flex h-full min-w-0 flex-1 flex-col items-center justify-end gap-2"
-                          title={`${day.count} activity events`}
-                        >
-                          <div className="flex h-full w-full items-end justify-center">
-                            <div
-                              className="w-full max-w-6 rounded-t-md bg-primary transition-all"
-                              style={{ height: `${height}%` }}
-                            />
-                          </div>
-                          <span className="text-[10px] text-[#aaa99f]">
-                            {day.label}
-                          </span>
-                        </div>
-                      );
-                    })}
-                  </div>
-                </div>
+<div className="rounded-xl bg-white p-3 pt-5">
+  <div className="mb-4 flex items-center justify-between">
+    <div>
+      <p className="text-xs font-semibold text-neutral-800">
+        Activity overview
+      </p>
+      <p className="mt-1 text-[10px] text-neutral-400">
+        Events recorded each day
+      </p>
+    </div>
+
+    <span className="flex items-center gap-1.5 text-[10px] text-[#838c08]">
+      <span className="size-2 rounded-full bg-[#838c08]" />
+      Activity
+    </span>
+  </div>
+
+  <div className="h-44 w-full">
+    <ResponsiveContainer width="100%" height="100%">
+      <AreaChart
+        data={activityByDay}
+        margin={{ top: 8, right: 8, left: -22, bottom: 0 }}
+      >
+        <defs>
+          <linearGradient
+            id="activityGradient"
+            x1="0"
+            y1="0"
+            x2="0"
+            y2="1"
+          >
+            <stop
+              offset="0%"
+              stopColor="#838c08"
+              stopOpacity={0.25}
+            />
+            <stop
+              offset="95%"
+              stopColor="#838c08"
+              stopOpacity={0.01}
+            />
+          </linearGradient>
+        </defs>
+
+        <CartesianGrid
+          strokeDasharray="3 3"
+          vertical={false}
+          stroke="#eeeeea"
+        />
+
+        <XAxis
+          dataKey="label"
+          axisLine={false}
+          tickLine={false}
+          tick={{ fill: "#a3a3a3", fontSize: 10 }}
+          dy={8}
+        />
+
+        <YAxis
+          allowDecimals={false}
+          axisLine={false}
+          tickLine={false}
+          tick={{ fill: "#a3a3a3", fontSize: 10 }}
+          width={30}
+        />
+
+        <Tooltip
+          cursor={{ stroke: "#838c08", strokeDasharray: "4 4" }}
+          contentStyle={{
+            backgroundColor: "#ffffff",
+            border: "1px solid #eeeeea",
+            borderRadius: "10px",
+            fontSize: "11px",
+            boxShadow: "0 4px 12px rgba(0,0,0,0.06)",
+          }}
+          formatter={(value) => [
+            `${value ?? 0} events`,
+            "Activity",
+          ]}
+          labelStyle={{
+            color: "#737373",
+            marginBottom: "4px",
+          }}
+        />
+
+        <Area
+          type="monotone"
+          dataKey="count"
+          stroke="#838c08"
+          strokeWidth={2.5}
+          fill="url(#activityGradient)"
+          activeDot={{
+            r: 5,
+            fill: "#838c08",
+            stroke: "#ffffff",
+            strokeWidth: 2,
+          }}
+          dot={{
+            r: 3,
+            fill: "#838c08",
+            stroke: "#ffffff",
+            strokeWidth: 1.5,
+          }}
+          animationDuration={700}
+        />
+      </AreaChart>
+    </ResponsiveContainer>
+  </div>
+</div>
+
               )}
             </div>
 
@@ -867,7 +932,7 @@ useEffect(() => {
                       </span>
                     </div>
                     <div className="space-y-2">
-                      {group.workspaces.map((workspace) => (
+                      {group.workspaces.slice(0, 1).map((workspace) => (
                         <article
                           key={workspace.id}
                           className="flex items-center justify-between gap-3 rounded-xl bg-white p-3"

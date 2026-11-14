@@ -1,7 +1,7 @@
 
 "use client";
 
-import { useState, type FormEvent } from "react";
+import { useEffect, useState, type FormEvent } from "react";
 import {
   PiCheckCircle,
   PiCode,
@@ -14,6 +14,7 @@ import {
   PiSpinnerGap,
   PiSquaresFour,
   PiTerminal,
+  PiX,
 } from "react-icons/pi";
 import { toast } from "sonner";
 import { z } from "zod";
@@ -77,6 +78,16 @@ export default function IntegrationsPage() {
   const [disconnectingWorkspaceId, setDisconnectingWorkspaceId] =
     useState<string | null>(null);
 
+  const [showIntroduction, setShowIntroduction] = useState(true);
+
+    useEffect(() => {
+      const timer = window.setTimeout(() => {
+        setShowIntroduction(false);
+      }, 2 * 60 * 1000);
+    
+      return () => window.clearTimeout(timer);
+    }, []);
+
   const workspacesQuery = useWorkspaces();
   const createWorkspace = useCreateWorkspace();
   const updateWorkspace = useUpdateWorkspace();
@@ -108,11 +119,12 @@ export default function IntegrationsPage() {
     .filter((group) => group.workspaces.length > 0);
 
   const cliCommand = `ai-reminder connect --ide ${provider}`;
+  const cliStartCommand = `ai-reminder start --ide ${provider}`;
 
-  async function copyCliCommand() {
+  async function copyCliCommand(command: string, label: string) {
     try {
-      await navigator.clipboard.writeText(cliCommand);
-      toast.success("CLI command copied.");
+      await navigator.clipboard.writeText(command);
+      toast.success(`${label} copied.`);
     } catch {
       toast.error("Could not copy the command. Please copy it manually.");
     }
@@ -262,26 +274,37 @@ export default function IntegrationsPage() {
 
         </section>
 
-        {/* Introduction */}
-        <section className="rounded-xl border border-border bg-secondary/40 p-4 sm:p-5">
-          <div className="flex items-start gap-3">
-            <PiShieldCheck className="mt-0.5 size-5 shrink-0 text-primary" />
+       {/* Temporary Introduction */}
+{showIntroduction && (
+  <section className="relative rounded-xl border border-border bg-secondary/40 p-4 pr-10 sm:p-5">
+    <button
+      type="button"
+      onClick={() => setShowIntroduction(false)}
+      aria-label="Dismiss introduction"
+      className="absolute right-3 top-3 rounded-md p-1 text-muted-foreground transition-colors hover:bg-secondary hover:text-foreground"
+    >
+      <PiX className="size-4" />
+    </button>
 
-            <div>
-              <h2 className="text-sm font-semibold">
-                Your connections, all in one place
-              </h2>
+    <div className="flex items-start gap-3">
+      <PiShieldCheck className="mt-0.5 size-5 shrink-0 text-primary" />
 
-              <p className="mt-1 text-xs leading-6 text-muted-foreground">
-                Connect the environments where your work happens and the
-                channels where you want to receive reminders. Workspace
-                connections provide activity data, while notification
-                connections provide delivery destinations. You control
-                which channels are used when creating your reminders.
-              </p>
-            </div>
-          </div>
-        </section>
+      <div>
+        <h2 className="text-sm font-semibold">
+          Your connections, all in one place
+        </h2>
+
+        <p className="mt-1 text-xs leading-6 text-muted-foreground">
+          Connect the environments where your work happens and the
+          channels where you want to receive reminders. Workspace
+          connections provide activity data, while notification
+          connections provide delivery destinations. You control
+          which channels are used when creating your reminders.
+        </p>
+      </div>
+    </div>
+  </section>
+)}
 
         {/* Workspace overview */}
         <section className="space-y-4">
@@ -471,50 +494,50 @@ export default function IntegrationsPage() {
                         : "Register browser workspace"}
                     </Button>
                   </>
-                ) : provider === "vscode" ? (
-                  <>
-                    <div className="rounded-lg bg-muted/60 p-3">
-                      <p className="text-xs leading-5 text-muted-foreground">
-                        Connect through the AI Reminder VS Code extension. You will
-                        approve the connection with your AI Reminder account.
+                ) : (
+                  <div className="space-y-3">
+                    {provider === "vscode" && (
+                      <div className="space-y-2 rounded-lg bg-muted/60 p-3">
+                        <p className="text-xs leading-5 text-muted-foreground">
+                          You can connect VS Code with the AI Reminder extension, or use the CLI commands below.
+                        </p>
+                        <Button
+                          type="button"
+                          variant="outline"
+                          className="w-full gap-2"
+                          onClick={connectVSCode}
+                        >
+                          <PiCode className="size-4" />
+                          Connect with VS Code extension
+                        </Button>
+                      </div>
+                    )}
+
+                    <div className="space-y-2.5 rounded-lg border border-border p-3">
+                      <div className="flex items-center gap-2">
+                        <PiTerminal className="size-4 shrink-0 text-primary" />
+                        <p className="text-xs font-semibold">Connect any IDE with the AI Reminder CLI</p>
+                      </div>
+
+                      <p className="text-[11px] leading-4 text-muted-foreground">
+                        Open the IDE's terminal in your project folder. These commands work with VS Code, Cursor, Antigravity, and Windsurf. The selected IDE is used automatically below.
+                      </p>
+
+                      <div className="space-y-1.5">
+                        <div className="flex min-w-0 items-center gap-2 rounded-md bg-muted px-2.5 py-2">
+                          <code className="min-w-0 flex-1 break-all text-[11px] leading-4">{cliCommand}</code>
+                          <Button type="button" size="sm" variant="outline" className="h-7 shrink-0 px-2 text-[11px]" onClick={() => void copyCliCommand(cliCommand, "Connect command")}>Copy</Button>
+                        </div>
+                        <div className="flex min-w-0 items-center gap-2 rounded-md bg-muted px-2.5 py-2">
+                          <code className="min-w-0 flex-1 break-all text-[11px] leading-4">{cliStartCommand}</code>
+                          <Button type="button" size="sm" variant="outline" className="h-7 shrink-0 px-2 text-[11px]" onClick={() => void copyCliCommand(cliStartCommand, "Start command")}>Copy</Button>
+                        </div>
+                      </div>
+
+                      <p className="text-[10px] leading-4 text-muted-foreground">
+                        First time using the CLI? Sign in once with <code className="rounded bg-muted px-1 py-0.5 text-[10px]">ai-reminder login &lt;website-url&gt;</code>. Replace the placeholder with your AI Reminder website URL.
                       </p>
                     </div>
-                    <Button
-                      type="submit"
-                      disabled={busy || isOpeningVSCode}
-                      className="w-full gap-2"
-                    >
-                      {isOpeningVSCode ? (
-                        <PiSpinnerGap className="size-4 animate-spin" />
-                      ) : (
-                        <PiCode className="size-4" />
-                      )}
-                      {isOpeningVSCode ? "Opening VS Code..." : "Connect VS Code"}
-                    </Button>
-                  </>
-                ) : (
-                  <div className="space-y-3 rounded-lg border border-border p-3">
-                    <div className="flex items-center gap-2">
-                      <PiTerminal className="size-4 text-primary" />
-                      <p className="text-sm font-medium">Connect with the AI Reminder CLI</p>
-                    </div>
-                    <p className="text-xs leading-5 text-muted-foreground">
-                      Open the selected IDE's integrated terminal in your project
-                      folder and run this command. The CLI will authorize your
-                      account and register this IDE-specific workspace.
-                    </p>
-                    <div className="flex items-center gap-2 rounded-md bg-muted p-2">
-                      <code className="min-w-0 flex-1 break-all text-xs">
-                        {cliCommand}
-                      </code>
-                      <Button type="button" size="sm" variant="outline" onClick={() => void copyCliCommand()}>
-                        Copy
-                      </Button>
-                    </div>
-                    <p className="text-[11px] leading-5 text-muted-foreground">
-                      If this is your first time using the CLI, sign in first with
-                      <code className="mx-1">ai-reminder login {"<website-url>"}</code>.
-                    </p>
                   </div>
                 )}
               </form>
