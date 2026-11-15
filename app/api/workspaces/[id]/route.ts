@@ -6,6 +6,7 @@ import { db } from "@/lib/server/db";
 import { workspaces } from "@/lib/server/db/schema";
 import { getCurrentUserId } from "@/lib/server/auth/session";
 import { getUserIdFromExtensionToken } from "@/lib/server/auth/extension-token";
+import { createInAppNotification } from "@/lib/server/notifications/create-in-app-notification";
 
 const updateWorkspaceSchema = z.object({
   monitoringEnabled: z.boolean().optional(),
@@ -51,6 +52,24 @@ export async function PATCH(
     const body: unknown = await request.json();
     const input = updateWorkspaceSchema.parse(body);
 
+    const [previousWorkspace] = await db
+      .select()
+      .from(workspaces)
+      .where(
+        and(
+          eq(workspaces.id, id),
+          eq(workspaces.userId, userId),
+        ),
+      )
+      .limit(1);
+
+    if (!previousWorkspace) {
+      return NextResponse.json(
+        { error: "Workspace not found." },
+        { status: 404 },
+      );
+    }
+
     const updateData: {
       monitoringEnabled?: boolean;
       status?: "connected" | "disconnected";
@@ -85,6 +104,25 @@ export async function PATCH(
         { error: "Workspace not found." },
         { status: 404 },
       );
+    }
+
+    const monitoringWasEnabled = previousWorkspace.monitoringEnabled;
+    const monitoringIsEnabled = workspace.monitoringEnabled;
+
+    if (monitoringWasEnabled !== monitoringIsEnabled) {
+      const started = monitoringIsEnabled;
+      await createInAppNotification({
+        userId,
+        title: started ? "Workspace monitoring started" : "Workspace monitoring stopped",
+        description: started
+          ? `AI Reminder is now monitoring ${workspace.name} for development activity.`
+          : `AI Reminder has stopped monitoring ${workspace.name}.`,
+        sourceKey: `workspace-monitoring:${workspace.id}:${started ? "started" : "stopped"}:${Date.now()}`,
+        category: "System",
+        icon: started ? "success" : "system",
+        actionLabel: "View activity",
+        actionHref: "/activity",
+      });
     }
 
     return NextResponse.json({ workspace });

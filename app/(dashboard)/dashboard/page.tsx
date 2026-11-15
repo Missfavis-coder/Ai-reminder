@@ -27,17 +27,11 @@ import {
 import { Button } from "@/components/ui/button";
 
 import { useCurrentUser } from "@/lib/hooks/use-auth";
-import {
-  useActivityEvents,
-  useWorkspaceSessions,
-} from "@/lib/hooks/use-activity";
-import {useCreateTask, useTasks, useUpdateTask,
-} from "@/lib/hooks/use-tasks";
+import { useActivityEvents,useWorkspaceSessions,} from "@/lib/hooks/use-activity";
+import {useCreateTask, useTasks, useUpdateTask,} from "@/lib/hooks/use-tasks";
 import { useReminderRules } from "@/lib/hooks/use-reminder-rules";
 import { useWorkspaces } from "@/lib/hooks/use-workspace";
-
 import type { Task } from "@/lib/types/tasks";
-
 import { formatDate, getReminderDescription, getReminderIcon, getReminderTiming, getReminderTriggerTime, isTaskOverdue,  formatDuration } from "@/lib/utils/dashboard";
 
 const EMPTY_ACTIVITY_EVENTS: never[] = [];
@@ -95,31 +89,17 @@ export default function DashboardPage() {
     );
   }, []);
 
-  const {
-    data: currentUserResponse,
-    isLoading: userLoading,
-  } = useCurrentUser();
+  const {data: currentUserResponse,isLoading: userLoading,} = useCurrentUser();
 
-  const {
-    data: tasks = [],
-    isLoading: tasksLoading,
-    isError: tasksError,
-  } = useTasks();
+  const {data: tasks = [], isLoading: tasksLoading, isError: tasksError,} = useTasks();
 
-  const {
-    data: activityEvents = EMPTY_ACTIVITY_EVENTS,
-    isLoading: activityLoading,
-    isError: activityError,
-    refetch: refetchActivity,
+  const {data: activityEvents = EMPTY_ACTIVITY_EVENTS,isLoading: activityLoading,isError: activityError,refetch: refetchActivity,
   } = useActivityEvents({
     period: "7d",
     limit: 100,
   });
 
-  const {
-    data: sessions = [],
-    isLoading: sessionsLoading,
-    isError: sessionsError,
+  const {data: sessions = [],isLoading: sessionsLoading,isError: sessionsError,
     refetch: refetchSessions,
   } = useWorkspaceSessions({
     period: "7d",

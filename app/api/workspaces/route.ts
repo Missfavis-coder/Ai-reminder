@@ -6,6 +6,7 @@ import { getUserIdFromExtensionToken } from "@/lib/server/auth/extension-token";
 import { getCurrentUserId } from "@/lib/server/auth/session";
 import { db } from "@/lib/server/db";
 import { workspaces } from "@/lib/server/db/schema";
+import { createInAppNotification } from "@/lib/server/notifications/create-in-app-notification";
 
 const workspaceProviders = [
   "browser",
@@ -109,6 +110,19 @@ export async function POST(request: NextRequest) {
           )
           .returning();
 
+        if (updated && existing.status !== "connected") {
+          await createInAppNotification({
+            userId,
+            title: "Workspace reconnected",
+            description: `${updated.name} has been reconnected to AI Reminder.`,
+            sourceKey: `workspace-reconnected:${updated.id}:${updated.lastSeenAt?.getTime?.() ?? Date.now()}`,
+            category: "System",
+            icon: "success",
+            actionLabel: "View integrations",
+            actionHref: "/integrations",
+          });
+        }
+
         return NextResponse.json(
           { workspace: updated ?? existing },
           { status: 200 },
@@ -134,6 +148,17 @@ export async function POST(request: NextRequest) {
         { status: 500 },
       );
     }
+
+    await createInAppNotification({
+      userId,
+      title: "Workspace connected",
+      description: `${workspace.name} has been connected to AI Reminder.`,
+      sourceKey: `workspace-connected:${workspace.id}`,
+      category: "System",
+      icon: "success",
+      actionLabel: "View integrations",
+      actionHref: "/integrations",
+    });
 
     return NextResponse.json(
       { workspace },
