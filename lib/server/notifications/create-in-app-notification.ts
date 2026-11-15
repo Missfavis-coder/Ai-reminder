@@ -17,27 +17,38 @@ type CreateInAppNotificationInput = {
 export async function createInAppNotification(
   input: CreateInAppNotificationInput,
 ) {
-  const [notification] = await db
-    .insert(inAppNotifications)
-    .values({
-      userId: input.userId,
-      title: input.title,
-      description: input.description,
-      sourceKey: `${input.sourceKey}:in-app`,
-      category: input.category ?? "Reminder",
-      icon: input.icon ?? "reminder",
-      actionLabel: input.actionLabel ?? "View reminders",
-      actionHref: input.actionHref ?? "/reminders",
-    })
-    .onConflictDoNothing({
-      target: inAppNotifications.sourceKey,
-    })
-    .returning({
-      id: inAppNotifications.id,
-    });
+  try {
+    const [notification] = await db
+      .insert(inAppNotifications)
+      .values({
+        userId: input.userId,
+        title: input.title,
+        description: input.description,
+        sourceKey: `${input.sourceKey}:in-app`,
+        category: input.category ?? "Reminder",
+        icon: input.icon ?? "reminder",
+        actionLabel: input.actionLabel ?? "View reminders",
+        actionHref: input.actionHref ?? "/reminders",
+      })
+      .onConflictDoNothing({
+        target: inAppNotifications.sourceKey,
+      })
+      .returning({
+        id: inAppNotifications.id,
+      });
 
-  return {
-    created: Boolean(notification),
-    notification: notification ?? null,
-  };
+    return {
+      created: Boolean(notification),
+      notification: notification ?? null,
+    };
+  } catch (error) {
+    // Notification delivery must not fail the primary action (login,
+    // workspace connection, monitoring state change, or reminder job).
+    console.error("Failed to create in-app notification:", error);
+
+    return {
+      created: false,
+      notification: null,
+    };
+  }
 }

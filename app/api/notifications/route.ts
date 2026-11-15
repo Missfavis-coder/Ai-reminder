@@ -37,7 +37,10 @@ export async function GET() {
       .where(eq(inAppNotifications.userId, userId))
       .orderBy(desc(inAppNotifications.createdAt));
 
-    return NextResponse.json({ notifications });
+    return NextResponse.json(
+      { notifications },
+      { headers: { "Cache-Control": "no-store, max-age=0" } },
+    );
   } catch (error) {
     console.error("Failed to load notifications:", error);
 

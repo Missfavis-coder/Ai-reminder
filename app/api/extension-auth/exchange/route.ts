@@ -10,6 +10,7 @@ import {
   extensionTokens,
 } from "@/lib/server/db/schema";
 import { hashExtensionSecret } from "@/lib/server/auth/extension-auth";
+import { createInAppNotification } from "@/lib/server/notifications/create-in-app-notification";
 
 const exchangeSchema = z.object({
   requestId: z.string().uuid(),
@@ -90,7 +91,12 @@ hashExtensionSecret(input.pollToken) !== authRequest.pollTokenHash ||
         });
 
       return createdToken
-        ? { token, ...createdToken }
+        ? {
+            token,
+            ...createdToken,
+            userId: consumed.userId,
+            name: consumed.deviceName,
+          }
         : null;
     });
 
@@ -101,10 +107,26 @@ hashExtensionSecret(input.pollToken) !== authRequest.pollTokenHash ||
       );
     }
 
-    return NextResponse.json(result, {
-      status: 201,
-      headers: { "Cache-Control": "no-store" },
-    });
+    if (result.name.toLowerCase().includes("cli")) {
+      await createInAppNotification({
+        userId: result.userId,
+        title: "AI Reminder CLI connected",
+        description: "Your CLI has successfully signed in and is now authorized to connect development workspaces.",
+        sourceKey: `cli-login:${result.id}`,
+        category: "System",
+        icon: "success",
+        actionLabel: "View integrations",
+        actionHref: "/integrations",
+      });
+    }
+
+    return NextResponse.json(
+      { token: result.token, id: result.id, expiresAt: result.expiresAt },
+      {
+        status: 201,
+        headers: { "Cache-Control": "no-store" },
+      },
+    );
   } catch (error) {
     if (error instanceof ZodError) {
       return NextResponse.json(

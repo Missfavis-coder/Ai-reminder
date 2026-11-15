@@ -22,6 +22,9 @@ export function useInAppNotifications() {
     queryKey: inAppNotificationKeys.list(),
     queryFn: ({ signal }) =>
       inAppNotificationService.getAll(signal),
+    refetchInterval: 15_000,
+    refetchIntervalInBackground: false,
+    refetchOnWindowFocus: true,
   });
 }
 

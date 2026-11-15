@@ -154,7 +154,7 @@ function NotificationIconView({
 function iconStyles(type: NotificationIcon) {
   switch (type) {
     case "reminder":
-      return "bg-[#fff6dc] text-[#a66b00]";
+      return "bg-accent/20 text-foreground";
     case "whatsapp":
       return "bg-[#e9f8ed] text-[#208747]";
     case "success":
@@ -162,7 +162,7 @@ function iconStyles(type: NotificationIcon) {
     case "warning":
       return "bg-[#fff0e8] text-[#c45d26]";
     case "system":
-      return "bg-[#f1efff] text-[#7460c5]";
+      return "bg-primary/10 text-primary";
     default:
       return "bg-muted text-muted-foreground";
   }
@@ -171,11 +171,11 @@ function iconStyles(type: NotificationIcon) {
 function categoryStyles(category: Category) {
   switch (category) {
     case "Reminder":
-      return "border-transparent bg-[#fff6dc] text-[#916100] hover:bg-[#fff6dc]";
+      return "border-transparent bg-accent/20 text-foreground hover:bg-accent/25";
     case "Delivery":
       return "border-transparent bg-[#e9f8ed] text-[#208747] hover:bg-[#e9f8ed]";
     case "System":
-      return "border-transparent bg-muted text-muted-foreground hover:bg-muted";
+      return "border-transparent bg-secondary text-primary hover:bg-secondary";
   }
 }
 

@@ -308,16 +308,7 @@ export default function IntegrationsPage() {
 
         {/* Workspace overview */}
         <section className="space-y-4">
-          <div>
-            <h2 className="text-base font-semibold">
-              Workspace overview
-            </h2>
-
-            <p className="mt-1 text-sm text-muted-foreground">
-              A quick overview of the environments connected to your account.
-            </p>
-          </div>
-
+        
           {workspacesQuery.isPending ? (
             <WorkspaceOverviewSkeleton />
           ) : workspacesQuery.isError ? (

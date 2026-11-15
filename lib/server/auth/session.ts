@@ -39,6 +39,7 @@ export async function createSession(userId: string) {
 }
 
 export async function getCurrentUserId(): Promise<string | null> {
+  // Ensure request-time execution before accessing dynamic values.
   await connection();
 
   const cookieStore = await cookies();
@@ -47,9 +48,10 @@ export async function getCurrentUserId(): Promise<string | null> {
   if (!token) return null;
 
   const tokenHash = hashToken(token);
-  const now = new Date();
 
   try {
+    const now = new Date();
+
     const [session] = await db
       .select({ userId: authSessions.userId })
       .from(authSessions)
@@ -64,33 +66,31 @@ export async function getCurrentUserId(): Promise<string | null> {
       .limit(1);
 
     return session?.userId ?? null;
-       } catch (error) {
-      console.error("Authentication session lookup failed:", error);
-  
-      if (error instanceof Error) {
-        console.error("Database error message:", error.message);
-        console.error("Database error cause:", error.cause);
-  
-        if (error.cause instanceof AggregateError) {
-          console.error(
-            "Underlying connection errors:",
-            error.cause.errors.map((item) => ({
-              message: item instanceof Error ? item.message : String(item),
-              code:
-                typeof item === "object" &&
-                item !== null &&
-                "code" in item
-                  ? item.code
-                  : undefined,
-            })),
-          );
-        }
+  } catch (error) {
+    console.error("Authentication session lookup failed:", error);
+
+    if (error instanceof Error) {
+      console.error("Database error message:", error.message);
+      console.error("Database error cause:", error.cause);
+
+      if (error.cause instanceof AggregateError) {
+        console.error(
+          "Underlying connection errors:",
+          error.cause.errors.map((item) => ({
+            message: item instanceof Error ? item.message : String(item),
+            code:
+              typeof item === "object" &&
+              item !== null &&
+              "code" in item
+                ? item.code
+                : undefined,
+          })),
+        );
       }
-  
-      throw error;
     }
 
-
+    throw error;
+  }
 }
 
 export async function destroySession() {
